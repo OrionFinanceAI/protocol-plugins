@@ -1,0 +1,28 @@
+# directories
+.coverage_artifacts
+.coverage_cache
+.coverage_contracts
+artifacts
+build
+cache
+coverage
+dist
+node_modules
+types
+.venv
+protocol-costs
+contracts/test
+
+# files
+*.env
+*.log
+.DS_Store
+.pnp.*
+coverage.json
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+README.md
+LICENSE
+LICENSE.*
+*.license

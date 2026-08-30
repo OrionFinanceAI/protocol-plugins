@@ -1,0 +1,23 @@
+bracketSpacing: true
+plugins:
+  - "prettier-plugin-solidity"
+printWidth: 120
+proseWrap: "always"
+singleQuote: false
+tabWidth: 2
+trailingComma: "all"
+
+overrides:
+  - files: "*.md"
+    options:
+      proseWrap: "always"
+  - files: "*.sol"
+    options:
+      compiler: "0.8.34"
+      tabWidth: 4
+  - files: "*.ts"
+    options:
+      parser: "typescript"
+  - files: "LICENSE"
+    options:
+      proseWrap: "preserve"
