@@ -1,7 +1,9 @@
 import { expect } from "chai";
 import { ethers } from "../helpers/hh";
 import { deployUpgradeableProtocol } from "../helpers/deployUpgradeable";
+import { getProtocolContractAt } from "../helpers/protocolArtifacts";
 import { resetNetwork } from "../helpers/resetNetwork";
+import type { OrionTransparentVault } from "@orion-finance/protocol/types/ethers-contracts/index.js";
 
 describe("Strategist constructors", function () {
   before(async function () {
@@ -37,11 +39,13 @@ describe("Strategist constructors", function () {
       }
     });
     const vaultAddr = deployed.transparentVaultFactory.interface.parseLog(log!)!.args[0] as string;
-    await tvl.setVault(vaultAddr);
+    const vault = (await getProtocolContractAt("OrionTransparentVault", vaultAddr)) as unknown as OrionTransparentVault;
+
+    await vault.connect(owner).updateStrategist(await tvl.getAddress());
     await tvl.setVault(vaultAddr); // idempotent same-address path
 
     const apy = await apyFactory.deploy(owner.address, await deployed.orionConfig.getAddress(), 1, 0);
-    await apy.setVault(vaultAddr);
+    await vault.connect(owner).updateStrategist(await apy.getAddress());
     await apy.setVault(vaultAddr);
   });
 });

@@ -62,6 +62,3 @@ We welcome contributions of all kinds! Bug reports, new plugins, tests, docs. Se
 
 [discord]: https://discord.gg/8bAXxPSPdw
 [discord-badge]: https://img.shields.io/badge/Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white
-
-[docs]: https://docs.orionfinance.ai/
-[docs-badge]: https://img.shields.io/badge/Documentation-Read%20the%20Docs-blue?style=for-the-badge&logo=readthedocs&logoColor=white

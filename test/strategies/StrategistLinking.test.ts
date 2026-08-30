@@ -339,17 +339,30 @@ describe("Strategist Linking", function () {
       await expect(strategy.setVault(ethers.ZeroAddress)).to.be.revertedWithCustomError(strategy, "ZeroAddress");
     });
 
-    it("First call to a non-zero address succeeds", async function () {
-      await expect(strategy.setVault(user.address)).to.not.be.rejected;
+    it("Reverts with NotAuthorized when caller is not the vault", async function () {
+      const vault = await createVault(transparentVaultFactory, owner, owner.address);
+      // Direct EOA call cannot bind even a real vault address
+      await expect(strategy.connect(stranger).setVault(await vault.getAddress())).to.be.revertedWithCustomError(
+        strategy,
+        "NotAuthorized",
+      );
+    });
+
+    it("First authorized link via vault.updateStrategist succeeds", async function () {
+      const vault = await createVault(transparentVaultFactory, owner, owner.address);
+      await expect(vault.connect(owner).updateStrategist(await strategy.getAddress())).to.not.be.rejected;
+      await expect(strategy.connect(owner).submitIntent()).to.not.be.rejected;
     });
 
     it("Second call with the same address is idempotent. No revert", async function () {
-      await strategy.setVault(user.address);
-      await expect(strategy.setVault(user.address)).to.not.be.rejected;
+      const vault = await createVault(transparentVaultFactory, owner, owner.address);
+      await vault.connect(owner).updateStrategist(await strategy.getAddress());
+      await expect(strategy.connect(stranger).setVault(await vault.getAddress())).to.not.be.rejected;
     });
 
     it("Second call with a different address reverts with StrategistVaultAlreadyLinked", async function () {
-      await strategy.setVault(user.address);
+      const vault = await createVault(transparentVaultFactory, owner, owner.address);
+      await vault.connect(owner).updateStrategist(await strategy.getAddress());
       await expect(strategy.setVault(stranger.address)).to.be.revertedWithCustomError(
         strategy,
         "StrategistVaultAlreadyLinked",

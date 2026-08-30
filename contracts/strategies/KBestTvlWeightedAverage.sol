@@ -53,6 +53,7 @@ contract KBestTvlWeightedAverage is IOrionStrategist, ERC165, Ownable2Step, Reen
         if (vault_ == address(0)) revert ErrorsLib.ZeroAddress();
         if (_vault == vault_) return; // idempotent for same address
         if (_vault != address(0)) revert ErrorsLib.StrategistVaultAlreadyLinked();
+        if (msg.sender != vault_) revert ErrorsLib.NotAuthorized();
         _vault = vault_;
     }
 
@@ -67,6 +68,7 @@ contract KBestTvlWeightedAverage is IOrionStrategist, ERC165, Ownable2Step, Reen
         uint256[] memory tvls = _getAssetTVLs(assets, n);
 
         uint16 kActual = uint16(Math.min(k, n));
+        if (kActual == 0) revert ErrorsLib.OrderIntentCannotBeEmpty();
         (address[] memory tokens, uint256[] memory topTvls) = _selectTopKAssets(assets, tvls, n, kActual);
 
         IOrionTransparentVault.IntentPosition[] memory intent = _calculatePositions(tokens, topTvls, kActual);

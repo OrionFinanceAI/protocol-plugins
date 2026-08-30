@@ -296,7 +296,7 @@ describe("Passive Strategist", function () {
       // Update passive strategist to select 0 assets
       await passiveStrategist.connect(strategist).updateParameters(0);
 
-      await expect(passiveStrategist.connect(strategist).submitIntent(transparentVault)).to.be.revertedWithCustomError(
+      await expect(passiveStrategist.connect(strategist).submitIntent()).to.be.revertedWithCustomError(
         passiveStrategist,
         "OrderIntentCannotBeEmpty",
       );
@@ -333,7 +333,9 @@ describe("Passive Strategist", function () {
       // Test various k values to ensure weights always sum to 100%
       for (let k = 1; k <= 4; k++) {
         await passiveStrategist.connect(strategist).updateParameters(k);
+        await passiveStrategist.connect(strategist).submitIntent();
         const [_tokens, weights] = await transparentVault.getIntent();
+        expect(weights.length).to.equal(k);
 
         let totalWeight = 0n;
         for (const weight of weights) {

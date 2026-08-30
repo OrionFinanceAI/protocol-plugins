@@ -83,6 +83,7 @@ contract KBestApyStrategist is IOrionStrategist, ERC165, Ownable2Step, Reentranc
         if (vault_ == address(0)) revert ErrorsLib.ZeroAddress();
         if (_vault == vault_) return;
         if (_vault != address(0)) revert ErrorsLib.StrategistVaultAlreadyLinked();
+        if (msg.sender != vault_) revert ErrorsLib.NotAuthorized();
         _vault = vault_;
     }
 
@@ -102,6 +103,7 @@ contract KBestApyStrategist is IOrionStrategist, ERC165, Ownable2Step, Reentranc
 
         uint256[] memory apys = _getAssetApys(assets, n);
         uint16 kActual = uint16(Math.min(k, n));
+        if (kActual == 0) revert ErrorsLib.OrderIntentCannotBeEmpty();
 
         (address[] memory tokens, uint256[] memory topApys) = _selectTopKByApy(assets, apys, n, kActual);
         IOrionTransparentVault.IntentPosition[] memory intent = _buildIntent(tokens, topApys, kActual);

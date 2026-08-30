@@ -61,11 +61,10 @@ Local development requires Node.js ≥ 22.13 and [pnpm](https://pnpm.io/).
    git checkout -b name-of-your-bugfix-or-feature
    ```
 
-   Prefer a branch name of the form `type/reference/description-in-kebab-case`, where
-   `type` aligns with [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/)
-   (`feat`, `fix`, `docs`, `refactor`, `test`, `chore`, …), `reference` is an issue such as
-   `issue-34` or `no-ref`, and `description` is a short kebab-case summary. Example:
-   `feat/issue-34/k-best-strategist`.
+   Prefer a branch name of the form `type/reference/description-in-kebab-case`, where `type` aligns with
+   [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) (`feat`, `fix`, `docs`, `refactor`, `test`,
+   `chore`, …), `reference` is an issue such as `issue-34` or `no-ref`, and `description` is a short kebab-case summary.
+   Example: `feat/issue-34/k-best-strategist`.
 
    Commit messages on that branch should follow Conventional Commits as described in
    [Submit your changes](#submit-your-changes).
@@ -116,8 +115,7 @@ using artifacts from the installed `@orion-finance/protocol` package.
 
 ## Submit your changes
 
-Commit your changes using a message that follows
-[Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/):
+Commit your changes using a message that follows [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/):
 
 Use `type(scope): description`, where the scope is optional. Common types are:
 
