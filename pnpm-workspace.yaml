@@ -25,6 +25,7 @@ allowedDeprecatedVersions:
   zksync-web3: "*"
 
 allowBuilds:
+  "@arbitrum/nitro-contracts": false
   "@parcel/watcher": true
   esbuild: true
   keccak: true
