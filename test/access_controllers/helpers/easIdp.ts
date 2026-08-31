@@ -48,10 +48,22 @@ async function mintAttestation(
   recipient: string,
   idp: string,
   data: string,
+  expirationTime = 0,
 ): Promise<string> {
-  const uid = await mockEas.createAttestation.staticCall(schemaUID, recipient, idp, data, 0, true);
-  await mockEas.createAttestation(schemaUID, recipient, idp, data, 0, true);
+  const uid = await mockEas.createAttestation.staticCall(schemaUID, recipient, idp, data, expirationTime, true);
+  await mockEas.createAttestation(schemaUID, recipient, idp, data, expirationTime, true);
   return uid;
+}
+
+export async function createRawAttestation(
+  mockEas: MockEAS,
+  idp: string,
+  recipient: string,
+  schemaUID: string,
+  data: string,
+  expirationTime = 0,
+): Promise<string> {
+  return mintAttestation(mockEas, schemaUID, recipient, idp, data, expirationTime);
 }
 
 export async function createEmailDomainAttestation(

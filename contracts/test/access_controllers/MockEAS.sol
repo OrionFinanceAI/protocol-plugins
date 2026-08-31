@@ -45,6 +45,21 @@ contract MockEAS is IEAS {
         attestation.revocationTime = uint64(block.timestamp);
     }
 
+    /// @notice Test helper: overwrite stored attestation fields after registration
+    function corruptAttestation(
+        bytes32 uid,
+        bytes32 newUid,
+        bytes32 newSchema,
+        address newRecipient,
+        address newAttester
+    ) external {
+        Attestation storage attestation = _attestations[uid];
+        attestation.uid = newUid;
+        attestation.schema = newSchema;
+        attestation.recipient = newRecipient;
+        attestation.attester = newAttester;
+    }
+
     /// @inheritdoc IEAS
     function getAttestation(bytes32 uid) external view returns (Attestation memory) {
         return _attestations[uid];
