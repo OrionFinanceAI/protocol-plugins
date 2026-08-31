@@ -11,8 +11,11 @@ import "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 /**
  * @title IBlacklistable
  * @notice External denylist surface (e.g. USDC FiatToken)
+ * @author Orion Finance
  */
 interface IBlacklistable {
+    /// @notice Returns whether an account is blacklisted
+    /// @param account The account to check
     function isBlacklisted(address account) external view returns (bool);
 }
 

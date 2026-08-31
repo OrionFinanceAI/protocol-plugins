@@ -15,11 +15,7 @@ export function encodeEmailDomainData(
   );
 }
 
-export function encodeNationalityData(
-  countryCode: string,
-  accredited = true,
-  twoFactorVerified = true,
-): string {
+export function encodeNationalityData(countryCode: string, accredited = true, twoFactorVerified = true): string {
   const code = ethers.hexlify(ethers.toUtf8Bytes(countryCode.padEnd(2, "\0")).slice(0, 2));
   return ethers.AbiCoder.defaultAbiCoder().encode(["bytes2", "bool", "bool"], [code, accredited, twoFactorVerified]);
 }
@@ -96,11 +92,7 @@ export async function createNationalityAttestation(
     throw new Error("country not allowed by IdP");
   }
 
-  const data = encodeNationalityData(
-    params.countryCode,
-    params.accredited ?? true,
-    params.twoFactorVerified ?? true,
-  );
+  const data = encodeNationalityData(params.countryCode, params.accredited ?? true, params.twoFactorVerified ?? true);
   return mintAttestation(mockEas, schemaUID, recipient, idp, data);
 }
 

@@ -11,17 +11,27 @@ import "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 /**
  * @title IENSResolver
  * @notice Minimal ENS resolver surface
+ * @author Orion Finance
  */
 interface IENSResolver {
+    /// @notice Resolve an ENS node to an address
+    /// @param node The ENS node
     function addr(bytes32 node) external view returns (address);
 }
 
 /**
  * @title IENSRegistry
  * @notice Minimal ENS registry with subtree helper
+ * @author Orion Finance
  */
 interface IENSRegistry {
+    /// @notice Returns the resolver for an ENS node
+    /// @param node The ENS node
     function resolver(bytes32 node) external view returns (address);
+
+    /// @notice Returns whether a node is a subnode of a root
+    /// @param node The candidate subnode
+    /// @param rootNode The root node
     function isSubnodeOf(bytes32 node, bytes32 rootNode) external view returns (bool);
 }
 
@@ -45,6 +55,8 @@ contract EnsSubtreeAccessControl is
     mapping(address => bool) public registeredAccounts;
 
     /// @notice Emitted when a wallet registers an ENS node under the root
+    /// @param account The registered wallet
+    /// @param node The ENS node registered
     event EnsNodeRegistered(address indexed account, bytes32 indexed node);
 
     /// @notice Constructor

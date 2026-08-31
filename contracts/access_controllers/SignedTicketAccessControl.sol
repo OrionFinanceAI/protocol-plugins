@@ -36,8 +36,9 @@ contract SignedTicketAccessControl is
     /// @notice EIP-712 domain separator
     bytes32 public immutable domainSeparator;
     /// @notice EIP-712 type hash for SignedTicket (without signature field)
-    bytes32 public constant SIGNED_TICKET_TYPEHASH =
-        keccak256("SignedTicket(address wallet,bytes32 claimHash,uint256 expiry)");
+    bytes32 public constant SIGNED_TICKET_TYPEHASH = keccak256(
+        "SignedTicket(address wallet,bytes32 claimHash,uint256 expiry)"
+    );
 
     /// @notice Registry expiry per wallet
     mapping(address => uint256) public ticketExpiry;
@@ -45,6 +46,9 @@ contract SignedTicketAccessControl is
     mapping(address => bytes32) public ticketClaimHash;
 
     /// @notice Emitted when a signed ticket is submitted to the registry
+    /// @param wallet The wallet that submitted the ticket
+    /// @param claimHash The claim hash bound to the ticket
+    /// @param expiry The ticket expiry timestamp
     event SignedTicketSubmitted(address indexed wallet, bytes32 claimHash, uint256 expiry);
 
     /// @notice Constructor

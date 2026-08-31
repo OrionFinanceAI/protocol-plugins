@@ -130,13 +130,10 @@ describe("Attestation gates", function () {
         gateAddress,
       );
 
-      const uid = await createEmailDomainAttestation(
-        mockEas,
-        idp.address,
-        user1.address,
-        EMAIL_DOMAIN_SCHEMA_UID,
-        { email: "alice@orionfinance.ai", totp: MOCK_TOTP },
-      );
+      const uid = await createEmailDomainAttestation(mockEas, idp.address, user1.address, EMAIL_DOMAIN_SCHEMA_UID, {
+        email: "alice@orionfinance.ai",
+        totp: MOCK_TOTP,
+      });
 
       await gate.connect(user1).registerAttestation(uid);
       await requestAndFulfill(mockAsset, liquidityOrchestrator, vault, user1, DEPOSIT_AMOUNT);
@@ -149,7 +146,14 @@ describe("Attestation gates", function () {
       const gate = await deployEmailDomainGate(mockEas);
       const gateAddress = await gate.getAddress();
 
-      const vault = await createVaultWithGates(factory, owner, strategist.address, gateAddress, gateAddress, gateAddress);
+      const vault = await createVaultWithGates(
+        factory,
+        owner,
+        strategist.address,
+        gateAddress,
+        gateAddress,
+        gateAddress,
+      );
 
       await expect(
         createEmailDomainAttestation(mockEas, idp.address, user1.address, EMAIL_DOMAIN_SCHEMA_UID, {
@@ -172,7 +176,14 @@ describe("Attestation gates", function () {
       const gate = await deployEmailDomainGate(mockEas);
       const gateAddress = await gate.getAddress();
 
-      const vault = await createVaultWithGates(factory, owner, strategist.address, gateAddress, gateAddress, gateAddress);
+      const vault = await createVaultWithGates(
+        factory,
+        owner,
+        strategist.address,
+        gateAddress,
+        gateAddress,
+        gateAddress,
+      );
 
       await expect(
         createEmailDomainAttestation(mockEas, idp.address, user1.address, EMAIL_DOMAIN_SCHEMA_UID, {
@@ -212,15 +223,19 @@ describe("Attestation gates", function () {
       const gate = await deployEmailDomainGate(mockEas);
       const gateAddress = await gate.getAddress();
 
-      const vault = await createVaultWithGates(factory, owner, strategist.address, gateAddress, gateAddress, gateAddress);
-
-      const uid = await createEmailDomainAttestation(
-        mockEas,
-        idp.address,
-        user1.address,
-        EMAIL_DOMAIN_SCHEMA_UID,
-        { email: "alice@orionfinance.ai", totp: MOCK_TOTP },
+      const vault = await createVaultWithGates(
+        factory,
+        owner,
+        strategist.address,
+        gateAddress,
+        gateAddress,
+        gateAddress,
       );
+
+      const uid = await createEmailDomainAttestation(mockEas, idp.address, user1.address, EMAIL_DOMAIN_SCHEMA_UID, {
+        email: "alice@orionfinance.ai",
+        totp: MOCK_TOTP,
+      });
       await gate.connect(user1).registerAttestation(uid);
 
       await mockEas.revoke(uid);
@@ -262,13 +277,11 @@ describe("Attestation gates", function () {
         gateAddress,
       );
 
-      const uid = await createNationalityAttestation(
-        mockEas,
-        idp.address,
-        user1.address,
-        NATIONALITY_SCHEMA_UID,
-        { countryCode: "IT", totp: MOCK_TOTP, allowedCountries: ["IT", "DE", "US"] },
-      );
+      const uid = await createNationalityAttestation(mockEas, idp.address, user1.address, NATIONALITY_SCHEMA_UID, {
+        countryCode: "IT",
+        totp: MOCK_TOTP,
+        allowedCountries: ["IT", "DE", "US"],
+      });
 
       await gate.connect(user1).registerAttestation(uid);
       await requestAndFulfill(mockAsset, liquidityOrchestrator, vault, user1, DEPOSIT_AMOUNT);
@@ -280,13 +293,11 @@ describe("Attestation gates", function () {
       const mockEas = (await MockEas.deploy()) as unknown as MockEAS;
       const gate = await deployNationalityGate(mockEas);
 
-      const uid = await createNationalityAttestation(
-        mockEas,
-        idp.address,
-        user1.address,
-        NATIONALITY_SCHEMA_UID,
-        { countryCode: "US", totp: MOCK_TOTP, allowedCountries: ["IT", "DE", "US"] },
-      );
+      const uid = await createNationalityAttestation(mockEas, idp.address, user1.address, NATIONALITY_SCHEMA_UID, {
+        countryCode: "US",
+        totp: MOCK_TOTP,
+        allowedCountries: ["IT", "DE", "US"],
+      });
 
       await expect(gate.connect(user1).registerAttestation(uid)).to.be.revertedWithCustomError(gate, "PolicyDenied");
     });

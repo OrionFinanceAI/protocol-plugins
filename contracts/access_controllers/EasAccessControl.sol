@@ -11,6 +11,7 @@ import "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 /**
  * @title IEAS
  * @notice Minimal Ethereum Attestation Service interface for Orion access gates
+ * @author Orion Finance
  */
 interface IEAS {
     /// @notice Empty attestation UID sentinel
@@ -70,6 +71,8 @@ contract EasAccessControl is
     mapping(address => bytes32) public attestationUid;
 
     /// @notice Emitted when a wallet registers an EAS attestation UID
+    /// @param wallet The registered wallet
+    /// @param uid The EAS attestation UID
     event AttestationRegistered(address indexed wallet, bytes32 indexed uid);
 
     /// @notice Constructor
@@ -132,7 +135,7 @@ contract EasAccessControl is
 
     function _isValid(IEAS.Attestation memory attestation) internal view returns (bool) {
         if (attestation.revocationTime != 0) return false;
-        if (attestation.expirationTime != 0 && block.timestamp >= attestation.expirationTime) return false;
+        if (attestation.expirationTime != 0 && !(block.timestamp < attestation.expirationTime)) return false;
         return true;
     }
 
@@ -158,8 +161,7 @@ contract EasAccessControl is
 
     function _emailDomainPolicyAllows(bytes memory data) internal view returns (bool) {
         if (data.length == 0) return false;
-        (bytes32 emailDomainHash, bool twoFactorVerified, bool eligible) =
-            abi.decode(data, (bytes32, bool, bool));
+        (bytes32 emailDomainHash, bool twoFactorVerified, bool eligible) = abi.decode(data, (bytes32, bool, bool));
         if (requiredEmailDomainHash != bytes32(0) && emailDomainHash != requiredEmailDomainHash) return false;
         if (!twoFactorVerified || !eligible) return false;
         return true;
@@ -167,8 +169,7 @@ contract EasAccessControl is
 
     function _nationalityPolicyAllows(bytes memory data) internal view returns (bool) {
         if (data.length == 0) return false;
-        (bytes2 countryCode, bool accredited, bool twoFactorVerified) =
-            abi.decode(data, (bytes2, bool, bool));
+        (bytes2 countryCode, bool accredited, bool twoFactorVerified) = abi.decode(data, (bytes2, bool, bool));
         if (!accredited || !twoFactorVerified) return false;
         if (allowedCountryCodes.length == 0) return true;
         return _countryAllowed(countryCode);
