@@ -20,11 +20,11 @@ importers:
         version: 5.6.1
       '@orion-finance/protocol':
         specifier: github:OrionFinanceAI/protocol#main
-        version: https://codeload.github.com/OrionFinanceAI/protocol/tar.gz/4bc329b80d6cb02d30e370dd253c39bb37946c30(@types/node@26.4.0)(ethers@6.17.0)
+        version: https://codeload.github.com/OrionFinanceAI/protocol/tar.gz/b7e1809317040f8c62bf5c0a82d7e7b6329ca0ef(@types/node@26.4.0)(ethers@6.17.0)
     devDependencies:
       '@eslint/eslintrc':
         specifier: ^3.3.6
-        version: 3.3.6(supports-color@8.1.1)
+        version: 3.3.6
       '@eslint/js':
         specifier: ^10.0.1
         version: 10.0.1(eslint@10.9.1(supports-color@8.1.1))
@@ -778,9 +778,9 @@ packages:
   '@openzeppelin/contracts@5.6.1':
     resolution: {integrity: sha512-Ly6SlsVJ3mj+b18W3R8gNufB7dTICT105fJhodGAGgyC2oqnBAhqSiNDJ8V8DLY05cCz81GLI0CU5vNYA1EC/w==}
 
-  '@orion-finance/protocol@https://codeload.github.com/OrionFinanceAI/protocol/tar.gz/4bc329b80d6cb02d30e370dd253c39bb37946c30':
-    resolution: {gitHosted: true, tarball: https://codeload.github.com/OrionFinanceAI/protocol/tar.gz/4bc329b80d6cb02d30e370dd253c39bb37946c30}
-    version: 2.6.3
+  '@orion-finance/protocol@https://codeload.github.com/OrionFinanceAI/protocol/tar.gz/b7e1809317040f8c62bf5c0a82d7e7b6329ca0ef':
+    resolution: {gitHosted: true, integrity: sha512-2uQOTdjL6RMyYJvGHZBbMuwXrJkrHIPR2Eo4kkph0JXdmcUHyAh97kKEeFH/OjAxQ0D1fb0t8hs753dCdAcuww==, tarball: https://codeload.github.com/OrionFinanceAI/protocol/tar.gz/b7e1809317040f8c62bf5c0a82d7e7b6329ca0ef}
+    version: 2.7.0
     engines: {node: '>=22.13.0'}
 
   '@pkgjs/parseargs@0.11.0':
@@ -2463,7 +2463,7 @@ snapshots:
       '@arbitrum/nitro-contracts': 3.0.0
       '@changesets/cli': 2.31.1(@types/node@26.4.0)
       '@changesets/get-github-info': 0.6.0
-      '@eslint/eslintrc': 3.3.6(supports-color@8.1.1)
+      '@eslint/eslintrc': 3.3.6
       '@eth-optimism/contracts': 0.6.0(ethers@6.17.0)
       '@openzeppelin/contracts-4.7.3': '@openzeppelin/contracts@4.7.3'
       '@openzeppelin/contracts-4.8.3': '@openzeppelin/contracts@4.8.3'
@@ -2737,7 +2737,7 @@ snapshots:
     dependencies:
       '@types/json-schema': 7.0.15
 
-  '@eslint/eslintrc@3.3.6(supports-color@8.1.1)':
+  '@eslint/eslintrc@3.3.6':
     dependencies:
       ajv: 6.15.0
       debug: 4.4.3(supports-color@8.1.1)
@@ -3311,7 +3311,7 @@ snapshots:
 
   '@openzeppelin/contracts@5.6.1': {}
 
-  '@orion-finance/protocol@https://codeload.github.com/OrionFinanceAI/protocol/tar.gz/4bc329b80d6cb02d30e370dd253c39bb37946c30(@types/node@26.4.0)(ethers@6.17.0)':
+  '@orion-finance/protocol@https://codeload.github.com/OrionFinanceAI/protocol/tar.gz/b7e1809317040f8c62bf5c0a82d7e7b6329ca0ef(@types/node@26.4.0)(ethers@6.17.0)':
     dependencies:
       '@chainlink/contracts': 1.5.0(@types/node@26.4.0)(ethers@6.17.0)
       '@morpho-org/morpho-blue': 1.0.0

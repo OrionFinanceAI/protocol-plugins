@@ -29,7 +29,17 @@ describe("Strategist constructors", function () {
     ).to.be.revertedWithCustomError(deployed.orionConfig, "InvalidArguments");
 
     const tvl = await tvlFactory.deploy(owner.address, await deployed.orionConfig.getAddress(), 1);
-    const tx = await deployed.transparentVaultFactory.createVault(owner.address, "K", "K", 0, 0, 0, ethers.ZeroAddress);
+    const tx = await deployed.transparentVaultFactory.createVault(
+      owner.address,
+      "K",
+      "K",
+      0,
+      0,
+      0,
+      ethers.ZeroAddress,
+      ethers.ZeroAddress,
+      ethers.ZeroAddress,
+    );
     const receipt = await tx.wait();
     const log = receipt!.logs.find((l) => {
       try {
