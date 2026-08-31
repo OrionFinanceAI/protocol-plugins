@@ -28,7 +28,17 @@ async function createVault(
 ): Promise<OrionTransparentVault> {
   const tx = await factory
     .connect(creator)
-    .createVault(strategistAddr, "Test Vault", "TV", 0, 0, 0, ethers.ZeroAddress);
+    .createVault(
+      strategistAddr,
+      "Test Vault",
+      "TV",
+      0,
+      0,
+      0,
+      ethers.ZeroAddress,
+      ethers.ZeroAddress,
+      ethers.ZeroAddress,
+    );
   const receipt = await tx.wait();
   const event = receipt?.logs.find((log) => {
     try {

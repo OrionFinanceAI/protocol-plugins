@@ -162,7 +162,17 @@ describe("Passive Strategist", function () {
     // Step 1: Create a transparent vault with an address (not contract) as strategist
     const tx = await transparentVaultFactory
       .connect(owner)
-      .createVault(strategist.address, "Passive Strategist Vault", "PSV", 0, 0, 0, ethers.ZeroAddress);
+      .createVault(
+        strategist.address,
+        "Passive Strategist Vault",
+        "PSV",
+        0,
+        0,
+        0,
+        ethers.ZeroAddress,
+        ethers.ZeroAddress,
+        ethers.ZeroAddress,
+      );
     const receipt = await tx.wait();
 
     // Find the vault creation event
@@ -363,7 +373,17 @@ describe("Passive Strategist", function () {
       // Create a new vault for this test
       const tx = await transparentVaultFactory
         .connect(owner)
-        .createVault(strategist.address, "Invalid Passive Strategist", "IPS", 0, 0, 0, ethers.ZeroAddress);
+        .createVault(
+          strategist.address,
+          "Invalid Passive Strategist",
+          "IPS",
+          0,
+          0,
+          0,
+          ethers.ZeroAddress,
+          ethers.ZeroAddress,
+          ethers.ZeroAddress,
+        );
       const receipt = await tx.wait();
 
       // Find the vault creation event

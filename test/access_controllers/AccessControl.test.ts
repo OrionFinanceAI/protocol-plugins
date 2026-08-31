@@ -1,8 +1,8 @@
 import { expect } from "chai";
 import { ethers } from "../helpers/hh";
-import { getProtocolContractAt } from "../helpers/protocolArtifacts";
 import { SignerWithAddress } from "@nomicfoundation/hardhat-ethers/signers";
 import type {
+  LiquidityOrchestrator,
   MockUnderlyingAsset,
   OrionTransparentVault,
   TransparentVaultFactory,
@@ -10,33 +10,34 @@ import type {
 import type { WhitelistAccessControl } from "../../types/ethers-contracts/index.js";
 import { deployUpgradeableProtocol } from "../helpers/deployUpgradeable";
 import { resetNetwork } from "../helpers/resetNetwork";
+import { createVaultWithGates, impersonateLo, parseUnderlying, requestAndFulfill } from "./helpers/vaultAccessControl";
 
-describe("Access Control", function () {
+describe("WhitelistAccessControl", function () {
   let owner: SignerWithAddress;
   let strategist: SignerWithAddress;
   let user1: SignerWithAddress;
   let user2: SignerWithAddress;
   let user3: SignerWithAddress;
 
+  let mockAsset: MockUnderlyingAsset;
+  let factory: TransparentVaultFactory;
+  let liquidityOrchestrator: LiquidityOrchestrator;
+  let accessControl: WhitelistAccessControl;
+
+  const DEPOSIT_AMOUNT = parseUnderlying("1000");
+
   before(async function () {
     await resetNetwork();
   });
-
-  let mockAsset: MockUnderlyingAsset;
-  let factory: TransparentVaultFactory;
-  let accessControl: WhitelistAccessControl;
-
-  const DEPOSIT_AMOUNT = ethers.parseUnits("1000", 6);
 
   beforeEach(async function () {
     [owner, strategist, user1, user2, user3] = await ethers.getSigners();
 
     const deployed = await deployUpgradeableProtocol(owner);
-
     mockAsset = deployed.underlyingAsset;
     factory = deployed.transparentVaultFactory;
+    liquidityOrchestrator = deployed.liquidityOrchestrator;
 
-    // Deploy WhitelistAccessControl
     const WhitelistAccessControlFactory = await ethers.getContractFactory("WhitelistAccessControl");
     accessControl = (await WhitelistAccessControlFactory.deploy(owner.address)) as unknown as WhitelistAccessControl;
   });
@@ -45,144 +46,101 @@ describe("Access Control", function () {
     let vault: OrionTransparentVault;
 
     beforeEach(async function () {
-      const vaultAddress = await factory.createVault.staticCall(
-        strategist.address,
-        "Test Vault",
-        "TV",
-        0, // feeType
-        0, // performanceFee
-        0, // managementFee
-        ethers.ZeroAddress, // depositAccessControl = address(0)
-      );
-
-      // Create vault with no access control (permissionless)
-      await factory.createVault(
-        strategist.address,
-        "Test Vault",
-        "TV",
-        0, // feeType
-        0, // performanceFee
-        0, // managementFee
-        ethers.ZeroAddress, // depositAccessControl = address(0)
-      );
-
-      vault = (await getProtocolContractAt("OrionTransparentVault", vaultAddress)) as unknown as OrionTransparentVault;
+      vault = await createVaultWithGates(factory, owner, strategist.address);
     });
 
     it("Should allow any user to deposit when access control is zero address", async function () {
-      // Mint tokens to users
       await mockAsset.mint(user1.address, DEPOSIT_AMOUNT);
       await mockAsset.mint(user2.address, DEPOSIT_AMOUNT);
-
-      // Approve vault
       await mockAsset.connect(user1).approve(await vault.getAddress(), DEPOSIT_AMOUNT);
       await mockAsset.connect(user2).approve(await vault.getAddress(), DEPOSIT_AMOUNT);
 
-      // Both users should be able to deposit
       await vault.connect(user1).requestDeposit(DEPOSIT_AMOUNT);
       await vault.connect(user2).requestDeposit(DEPOSIT_AMOUNT);
     });
 
-    it("Should return zero address for depositAccessControl", async function () {
+    it("Should return zero address for all gate slots", async function () {
       expect(await vault.depositAccessControl()).to.equal(ethers.ZeroAddress);
+      expect(await vault.holderAccessControl()).to.equal(ethers.ZeroAddress);
+      expect(await vault.transferAccessControl()).to.equal(ethers.ZeroAddress);
     });
   });
 
-  describe("With Access Control Enabled", function () {
+  describe("Deposit gate only", function () {
     let vault: OrionTransparentVault;
 
     beforeEach(async function () {
-      const vaultAddress = await factory.createVault.staticCall(
-        strategist.address,
-        "Gated Vault",
-        "GV",
-        0,
-        0,
-        0,
-        await accessControl.getAddress(), // depositAccessControl enabled
-      );
-
-      // Create vault with access control
-      await factory.createVault(
-        strategist.address,
-        "Gated Vault",
-        "GV",
-        0,
-        0,
-        0,
-        await accessControl.getAddress(), // depositAccessControl enabled
-      );
-
-      vault = (await getProtocolContractAt("OrionTransparentVault", vaultAddress)) as unknown as OrionTransparentVault;
-    });
-
-    it("Should return correct depositAccessControl address", async function () {
-      expect(await vault.depositAccessControl()).to.equal(await accessControl.getAddress());
+      const aclAddress = await accessControl.getAddress();
+      vault = await createVaultWithGates(factory, owner, strategist.address, aclAddress);
     });
 
     it("Should allow whitelisted user to deposit", async function () {
-      // Whitelist user1
       await accessControl.addToWhitelist([user1.address]);
-
-      // Mint and approve
       await mockAsset.mint(user1.address, DEPOSIT_AMOUNT);
       await mockAsset.connect(user1).approve(await vault.getAddress(), DEPOSIT_AMOUNT);
-
-      // Should succeed
       await vault.connect(user1).requestDeposit(DEPOSIT_AMOUNT);
     });
 
     it("Should reject non-whitelisted user deposit", async function () {
-      // user2 is not whitelisted
       await mockAsset.mint(user2.address, DEPOSIT_AMOUNT);
       await mockAsset.connect(user2).approve(await vault.getAddress(), DEPOSIT_AMOUNT);
-
-      // Should revert
       await expect(vault.connect(user2).requestDeposit(DEPOSIT_AMOUNT)).to.be.revertedWithCustomError(
         vault,
         "DepositNotAllowed",
       );
     });
 
-    it("Should allow owner to add users to whitelist", async function () {
-      // Add user3 to whitelist
-      await expect(accessControl.addToWhitelist([user3.address]))
-        .to.emit(accessControl, "AddressWhitelisted")
-        .withArgs(user3.address);
+    it("Should leave share transfers unrestricted when holder/transfer gates are unset", async function () {
+      await accessControl.addToWhitelist([user1.address]);
+      await requestAndFulfill(mockAsset, liquidityOrchestrator, vault, user1, DEPOSIT_AMOUNT);
+      const shares = await vault.balanceOf(user1.address);
 
-      // Verify user3 can deposit
-      await mockAsset.mint(user3.address, DEPOSIT_AMOUNT);
-      await mockAsset.connect(user3).approve(await vault.getAddress(), DEPOSIT_AMOUNT);
-      await vault.connect(user3).requestDeposit(DEPOSIT_AMOUNT);
+      await vault.connect(user1).transfer(user2.address, shares / 2n);
+      expect(await vault.balanceOf(user2.address)).to.equal(shares / 2n);
+    });
+  });
+
+  describe("All gates enabled", function () {
+    let vault: OrionTransparentVault;
+
+    beforeEach(async function () {
+      const aclAddress = await accessControl.getAddress();
+      vault = await createVaultWithGates(factory, owner, strategist.address, aclAddress, aclAddress, aclAddress);
+      await accessControl.addToWhitelist([user1.address, user2.address]);
     });
 
-    it("Should allow owner to remove users from whitelist", async function () {
-      // Whitelist then remove user1
-      await accessControl.addToWhitelist([user1.address]);
-      await expect(accessControl.removeFromWhitelist([user1.address]))
-        .to.emit(accessControl, "AddressRemovedFromWhitelist")
-        .withArgs(user1.address);
+    it("Should allow whitelisted to whitelisted transfer", async function () {
+      await requestAndFulfill(mockAsset, liquidityOrchestrator, vault, user1, DEPOSIT_AMOUNT);
+      const shares = await vault.balanceOf(user1.address);
+      await vault.connect(user1).transfer(user2.address, shares / 4n);
+      expect(await vault.balanceOf(user2.address)).to.equal(shares / 4n);
+    });
 
-      // Verify user1 cannot deposit
-      await mockAsset.mint(user1.address, DEPOSIT_AMOUNT);
-      await mockAsset.connect(user1).approve(await vault.getAddress(), DEPOSIT_AMOUNT);
-      await expect(vault.connect(user1).requestDeposit(DEPOSIT_AMOUNT)).to.be.revertedWithCustomError(
+    it("Should reject transfer to non-whitelisted recipient", async function () {
+      await requestAndFulfill(mockAsset, liquidityOrchestrator, vault, user1, DEPOSIT_AMOUNT);
+      const shares = await vault.balanceOf(user1.address);
+      await expect(vault.connect(user1).transfer(user3.address, shares / 4n)).to.be.revertedWithCustomError(
         vault,
-        "DepositNotAllowed",
+        "ShareTransferNotAllowed",
       );
     });
 
-    it("Should support batch whitelisting", async function () {
-      const addresses = [user1.address, user2.address, user3.address];
+    it("Should allow redeem with share gates set", async function () {
+      await requestAndFulfill(mockAsset, liquidityOrchestrator, vault, user1, DEPOSIT_AMOUNT);
+      const shares = await vault.balanceOf(user1.address);
 
-      await accessControl.addToWhitelist(addresses);
+      await vault.connect(user1).approve(await vault.getAddress(), shares);
+      await vault.connect(user1).requestRedeem(shares);
 
-      // Verify all can deposit
-      for (const user of [user1, user2, user3]) {
-        await mockAsset.mint(user.address, DEPOSIT_AMOUNT);
-        await mockAsset.connect(user).approve(await vault.getAddress(), DEPOSIT_AMOUNT);
-        await vault.connect(user).requestDeposit(DEPOSIT_AMOUNT);
-      }
+      const loSigner = await impersonateLo(liquidityOrchestrator);
+      await mockAsset.mint(await liquidityOrchestrator.getAddress(), DEPOSIT_AMOUNT);
+      await vault.connect(loSigner).fulfillRedeem(DEPOSIT_AMOUNT);
+      expect(await vault.balanceOf(user1.address)).to.equal(0n);
+    });
+
+    it("Should return maxDeposit 0 when holder gate denies", async function () {
+      await accessControl.removeFromWhitelist([user1.address]);
+      expect(await vault.maxDeposit(user1.address)).to.equal(0n);
     });
   });
 
@@ -190,74 +148,24 @@ describe("Access Control", function () {
     let vault: OrionTransparentVault;
 
     beforeEach(async function () {
-      const vaultAddress = await factory.createVault.staticCall(
-        strategist.address,
-        "Updateable Vault",
-        "UV",
-        0,
-        0,
-        0,
-        ethers.ZeroAddress,
-      );
-
-      // Create vault without access control initially
-      await factory.createVault(strategist.address, "Updateable Vault", "UV", 0, 0, 0, ethers.ZeroAddress);
-
-      vault = (await getProtocolContractAt("OrionTransparentVault", vaultAddress)) as unknown as OrionTransparentVault;
+      vault = await createVaultWithGates(factory, owner, strategist.address);
     });
 
-    it("Should allow manager to set access control", async function () {
-      await expect(vault.connect(owner).setDepositAccessControl(await accessControl.getAddress()))
-        .to.emit(vault, "DepositAccessControlUpdated")
-        .withArgs(await accessControl.getAddress());
+    it("Should allow manager to set all gate slots", async function () {
+      const aclAddress = await accessControl.getAddress();
+      await vault.connect(owner).setDepositAccessControl(aclAddress);
+      await vault.connect(owner).setHolderAccessControl(aclAddress);
+      await vault.connect(owner).setTransferAccessControl(aclAddress);
 
-      expect(await vault.depositAccessControl()).to.equal(await accessControl.getAddress());
+      expect(await vault.depositAccessControl()).to.equal(aclAddress);
+      expect(await vault.holderAccessControl()).to.equal(aclAddress);
+      expect(await vault.transferAccessControl()).to.equal(aclAddress);
     });
 
-    it("Should allow manager to disable access control", async function () {
-      // First enable
-      await vault.connect(owner).setDepositAccessControl(await accessControl.getAddress());
-
-      // Then disable
-      await expect(vault.connect(owner).setDepositAccessControl(ethers.ZeroAddress))
-        .to.emit(vault, "DepositAccessControlUpdated")
-        .withArgs(ethers.ZeroAddress);
-
-      expect(await vault.depositAccessControl()).to.equal(ethers.ZeroAddress);
-    });
-
-    it("Should reject non-owner attempts to set access control", async function () {
+    it("Should reject non-manager attempts to set access control", async function () {
       await expect(
         vault.connect(user1).setDepositAccessControl(await accessControl.getAddress()),
       ).to.be.revertedWithCustomError(vault, "NotAuthorized");
-    });
-
-    it("Should apply access control after being set", async function () {
-      // Initially permissionless
-      await mockAsset.mint(user1.address, DEPOSIT_AMOUNT);
-      await mockAsset.connect(user1).approve(await vault.getAddress(), DEPOSIT_AMOUNT);
-      await vault.connect(user1).requestDeposit(DEPOSIT_AMOUNT);
-
-      // Cancel the deposit
-      await vault.connect(user1).cancelDepositRequest(DEPOSIT_AMOUNT);
-
-      // Now enable access control
-      await vault.connect(owner).setDepositAccessControl(await accessControl.getAddress());
-
-      // Approve again for next deposit attempt
-      await mockAsset.connect(user1).approve(await vault.getAddress(), DEPOSIT_AMOUNT);
-
-      // user1 is not whitelisted, should fail
-      await expect(vault.connect(user1).requestDeposit(DEPOSIT_AMOUNT)).to.be.revertedWithCustomError(
-        vault,
-        "DepositNotAllowed",
-      );
-
-      // Whitelist user1
-      await accessControl.addToWhitelist([user1.address]);
-
-      // Now should work
-      await vault.connect(user1).requestDeposit(DEPOSIT_AMOUNT);
     });
   });
 

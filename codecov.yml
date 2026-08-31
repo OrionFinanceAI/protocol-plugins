@@ -1,0 +1,17 @@
+coverage:
+  status:
+    project:
+      default:
+        target: 97%
+        paths:
+          - "contracts/"
+    patch:
+      default:
+        target: 97%
+        paths:
+          - "contracts/"
+
+ignore:
+  - "contracts/test/**"
+  - "test/**"
+  - "node_modules/**"
