@@ -1,17 +1,28 @@
 // SPDX-License-Identifier: BSD-3-Clause
 pragma solidity 0.8.34;
 
-import { IOrionAccessControl } from "@orion-finance/protocol/contracts/interfaces/IOrionAccessControl.sol";
+import {
+    IOrionDepositAccessControl,
+    IOrionHolderAccessControl,
+    IOrionTransferAccessControl
+} from "@orion-finance/protocol/contracts/interfaces/IOrionAccessControl.sol";
 import "@openzeppelin/contracts/access/Ownable2Step.sol";
+import "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 
 /**
  * @title WhitelistAccessControl
- * @notice Implementation of IOrionAccessControl with whitelist-based access
+ * @notice Whitelist-based investor access control for Orion vaults
  * @author Orion Finance
  * @custom:security-contact security@orionfinance.ai
  */
-contract WhitelistAccessControl is IOrionAccessControl, Ownable2Step {
-    /// @notice Mapping of addresses allowed to deposit
+contract WhitelistAccessControl is
+    IOrionDepositAccessControl,
+    IOrionHolderAccessControl,
+    IOrionTransferAccessControl,
+    Ownable2Step,
+    ERC165
+{
+    /// @notice Mapping of addresses allowed for deposit / hold / transfer
     mapping(address => bool) public whitelist;
 
     /// @notice Emitted when an address is added to the whitelist
@@ -26,9 +37,28 @@ contract WhitelistAccessControl is IOrionAccessControl, Ownable2Step {
     /// @param initialOwner_ The address of the initial owner
     constructor(address initialOwner_) Ownable(initialOwner_) {}
 
-    /// @inheritdoc IOrionAccessControl
+    /// @inheritdoc IOrionDepositAccessControl
     function canRequestDeposit(address sender, bytes calldata) external view override returns (bool) {
         return whitelist[sender];
+    }
+
+    /// @inheritdoc IOrionHolderAccessControl
+    function canHoldShares(address account) external view override returns (bool) {
+        return whitelist[account];
+    }
+
+    /// @inheritdoc IOrionTransferAccessControl
+    function canTransferShares(address account, bytes calldata) external view override returns (bool) {
+        return whitelist[account];
+    }
+
+    /// @inheritdoc IERC165
+    function supportsInterface(bytes4 interfaceId) public view virtual override(ERC165, IERC165) returns (bool) {
+        return
+            interfaceId == type(IOrionDepositAccessControl).interfaceId ||
+            interfaceId == type(IOrionHolderAccessControl).interfaceId ||
+            interfaceId == type(IOrionTransferAccessControl).interfaceId ||
+            super.supportsInterface(interfaceId);
     }
 
     /**
