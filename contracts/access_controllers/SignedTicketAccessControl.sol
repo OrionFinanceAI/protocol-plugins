@@ -6,6 +6,7 @@ import {
     IOrionHolderAccessControl,
     IOrionTransferAccessControl
 } from "@orion-finance/protocol/contracts/interfaces/IOrionAccessControl.sol";
+import "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 
@@ -19,6 +20,7 @@ contract SignedTicketAccessControl is
     IOrionDepositAccessControl,
     IOrionHolderAccessControl,
     IOrionTransferAccessControl,
+    EIP712,
     ERC165
 {
     using ECDSA for bytes32;
@@ -33,8 +35,6 @@ contract SignedTicketAccessControl is
 
     /// @notice Trusted attester that signs tickets off-chain
     address public immutable attester;
-    /// @notice EIP-712 domain separator
-    bytes32 public immutable domainSeparator;
     /// @notice EIP-712 type hash for SignedTicket (without signature field)
     bytes32 public constant SIGNED_TICKET_TYPEHASH = keccak256(
         "SignedTicket(address wallet,bytes32 claimHash,uint256 expiry)"
@@ -55,27 +55,20 @@ contract SignedTicketAccessControl is
     /// @param attester_ The trusted attester address
     /// @param name_ EIP-712 domain name
     /// @param version_ EIP-712 domain version
-    constructor(address attester_, string memory name_, string memory version_) {
+    constructor(address attester_, string memory name_, string memory version_) EIP712(name_, version_) {
         if (attester_ == address(0)) revert InvalidAttester();
         attester = attester_;
-        domainSeparator = keccak256(
-            abi.encode(
-                keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
-                keccak256(bytes(name_)),
-                keccak256(bytes(version_)),
-                block.chainid,
-                address(this)
-            )
-        );
     }
 
     error InvalidAttester();
     error InvalidTicket();
+    error StaleTicket();
 
     /// @notice Submit a signed ticket to the on-chain registry
     /// @param ticket The signed ticket
     function submitSignedTicket(SignedTicket calldata ticket) external {
         if (!_verifyTicket(ticket)) revert InvalidTicket();
+        if (ticket.expiry <= ticketExpiry[ticket.wallet]) revert StaleTicket();
         ticketExpiry[ticket.wallet] = ticket.expiry;
         ticketClaimHash[ticket.wallet] = ticket.claimHash;
         emit SignedTicketSubmitted(ticket.wallet, ticket.claimHash, ticket.expiry);
@@ -89,8 +82,7 @@ contract SignedTicketAccessControl is
         bytes32 structHash = keccak256(
             abi.encode(SIGNED_TICKET_TYPEHASH, ticket.wallet, ticket.claimHash, ticket.expiry)
         );
-        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", domainSeparator, structHash));
-        return digest.recover(ticket.signature) == attester;
+        return _hashTypedDataV4(structHash).recover(ticket.signature) == attester;
     }
 
     function _ok(address account) internal view returns (bool) {

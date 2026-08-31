@@ -79,6 +79,14 @@ describe("Deposit policy gates", function () {
 
       await requestAndFulfill(mockAsset, liquidityOrchestrator, vault, user2, DEPOSIT_AMOUNT);
       expect(await vault.balanceOf(user2.address)).to.be.gt(0n);
+
+      const [, , , , outsider] = await ethers.getSigners();
+      await mockAsset.mint(outsider.address, DEPOSIT_AMOUNT);
+      await mockAsset.connect(outsider).approve(await vault.getAddress(), DEPOSIT_AMOUNT);
+      await expect(vault.connect(outsider).requestDeposit(DEPOSIT_AMOUNT)).to.be.revertedWithCustomError(
+        vault,
+        "DepositNotAllowed",
+      );
     });
   });
 

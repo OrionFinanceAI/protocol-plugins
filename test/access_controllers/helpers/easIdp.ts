@@ -15,13 +15,15 @@ export function encodeEmailDomainData(
   );
 }
 
-export function encodeNationalityData(countryCode: string, accredited = true, twoFactorVerified = true): string {
-  const code = ethers.hexlify(ethers.toUtf8Bytes(countryCode.padEnd(2, "\0")).slice(0, 2));
-  return ethers.AbiCoder.defaultAbiCoder().encode(["bytes2", "bool", "bool"], [code, accredited, twoFactorVerified]);
-}
-
 export function countryCodeBytes2(countryCode: string): string {
   return ethers.hexlify(ethers.toUtf8Bytes(countryCode.padEnd(2, "\0")).slice(0, 2));
+}
+
+export function encodeNationalityData(countryCode: string, accredited = true, twoFactorVerified = true): string {
+  return ethers.AbiCoder.defaultAbiCoder().encode(
+    ["bytes2", "bool", "bool"],
+    [countryCodeBytes2(countryCode), accredited, twoFactorVerified],
+  );
 }
 
 export interface EmailDomainAttestParams {

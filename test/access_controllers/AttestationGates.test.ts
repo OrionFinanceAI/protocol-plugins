@@ -106,6 +106,7 @@ describe("Attestation gates", function () {
     async function deployEmailDomainGate(mockEas: MockEAS): Promise<EasAccessControl> {
       const Eas = await ethers.getContractFactory("EasAccessControl");
       return (await Eas.deploy(
+        owner.address,
         await mockEas.getAddress(),
         EMAIL_DOMAIN_SCHEMA_UID,
         [idp.address],
@@ -162,6 +163,16 @@ describe("Attestation gates", function () {
         }),
       ).to.be.rejectedWith("2FA failed");
 
+      const failed2faData = encodeEmailDomainData(ORION_DOMAIN_HASH, false, true);
+      const uid = await createRawEmailDomainAttestation(
+        mockEas,
+        idp.address,
+        user1.address,
+        EMAIL_DOMAIN_SCHEMA_UID,
+        failed2faData,
+      );
+      await expect(gate.connect(user1).registerAttestation(uid)).to.be.revertedWithCustomError(gate, "PolicyDenied");
+
       await mockAsset.mint(user1.address, DEPOSIT_AMOUNT);
       await mockAsset.connect(user1).approve(await vault.getAddress(), DEPOSIT_AMOUNT);
       await expect(vault.connect(user1).requestDeposit(DEPOSIT_AMOUNT)).to.be.revertedWithCustomError(
@@ -191,6 +202,16 @@ describe("Attestation gates", function () {
           totp: MOCK_TOTP,
         }),
       ).to.be.rejectedWith("bad domain");
+
+      const wrongDomainData = encodeEmailDomainData(ethers.id("gmail.com"));
+      const uid = await createRawEmailDomainAttestation(
+        mockEas,
+        idp.address,
+        user1.address,
+        EMAIL_DOMAIN_SCHEMA_UID,
+        wrongDomainData,
+      );
+      await expect(gate.connect(user1).registerAttestation(uid)).to.be.revertedWithCustomError(gate, "PolicyDenied");
 
       await mockAsset.mint(user1.address, DEPOSIT_AMOUNT);
       await mockAsset.connect(user1).approve(await vault.getAddress(), DEPOSIT_AMOUNT);
@@ -253,6 +274,7 @@ describe("Attestation gates", function () {
     async function deployNationalityGate(mockEas: MockEAS): Promise<EasAccessControl> {
       const Eas = await ethers.getContractFactory("EasAccessControl");
       return (await Eas.deploy(
+        owner.address,
         await mockEas.getAddress(),
         NATIONALITY_SCHEMA_UID,
         [idp.address],
@@ -340,6 +362,52 @@ describe("Attestation gates", function () {
       await gate.connect(user1).registerEnsNode(userNode);
       await requestAndFulfill(mockAsset, liquidityOrchestrator, vault, user1, DEPOSIT_AMOUNT);
       expect(await vault.balanceOf(user1.address)).to.be.gt(0n);
+    });
+
+    it("denies access when ENS resolution changes after registration", async function () {
+      const rootNode = ethers.id("orionfinance.ai-root");
+      const userNode = ethers.id("alice.orionfinance.ai");
+
+      const MockRegistry = await ethers.getContractFactory("MockEnsRegistry");
+      const registry = (await MockRegistry.deploy()) as unknown as MockEnsRegistry;
+      const MockResolver = await ethers.getContractFactory("MockEnsResolver");
+      const resolver = (await MockResolver.deploy()) as unknown as MockEnsResolver;
+
+      await registry.setResolver(userNode, await resolver.getAddress());
+      await registry.setParent(userNode, rootNode);
+      await resolver.setAddr(userNode, user1.address);
+
+      const EnsGate = await ethers.getContractFactory("EnsSubtreeAccessControl");
+      const gate = (await EnsGate.deploy(await registry.getAddress(), rootNode)) as unknown as EnsSubtreeAccessControl;
+      const gateAddress = await gate.getAddress();
+
+      const vault = await createVaultWithGates(
+        factory,
+        owner,
+        strategist.address,
+        gateAddress,
+        gateAddress,
+        gateAddress,
+      );
+
+      await gate.connect(user1).registerEnsNode(userNode);
+      await requestAndFulfill(mockAsset, liquidityOrchestrator, vault, user1, DEPOSIT_AMOUNT);
+      expect(await gate.canHoldShares(user1.address)).to.equal(true);
+
+      await resolver.setAddr(userNode, user2.address);
+      expect(await gate.canHoldShares(user1.address)).to.equal(false);
+
+      await resolver.setAddr(userNode, user1.address);
+      expect(await gate.canHoldShares(user1.address)).to.equal(true);
+
+      await registry.setParent(userNode, ethers.id("other-root"));
+      expect(await gate.canHoldShares(user1.address)).to.equal(false);
+
+      await registry.setParent(userNode, rootNode);
+      expect(await gate.canHoldShares(user1.address)).to.equal(true);
+
+      await registry.setResolver(userNode, ethers.ZeroAddress);
+      expect(await gate.canHoldShares(user1.address)).to.equal(false);
     });
   });
 });

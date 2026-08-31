@@ -51,8 +51,8 @@ contract EnsSubtreeAccessControl is
     IENSRegistry public immutable ensRegistry;
     /// @notice Trusted root node (e.g. namehash of "orionfinance.ai")
     bytes32 public immutable rootNode;
-    /// @notice Wallets verified via registerEnsNode
-    mapping(address => bool) public registeredAccounts;
+    /// @notice Registered ENS node per wallet
+    mapping(address => bytes32) public registeredNode;
 
     /// @notice Emitted when a wallet registers an ENS node under the root
     /// @param account The registered wallet
@@ -77,7 +77,7 @@ contract EnsSubtreeAccessControl is
     /// @param node The ENS node that must resolve to msg.sender
     function registerEnsNode(bytes32 node) external {
         if (!_verifyNode(msg.sender, node)) revert InvalidEnsNode();
-        registeredAccounts[msg.sender] = true;
+        registeredNode[msg.sender] = node;
         emit EnsNodeRegistered(msg.sender, node);
     }
 
@@ -94,7 +94,9 @@ contract EnsSubtreeAccessControl is
     }
 
     function _ok(address account) internal view returns (bool) {
-        return registeredAccounts[account];
+        bytes32 node = registeredNode[account];
+        if (node == bytes32(0)) return false;
+        return _verifyNode(account, node);
     }
 
     /// @inheritdoc IOrionDepositAccessControl

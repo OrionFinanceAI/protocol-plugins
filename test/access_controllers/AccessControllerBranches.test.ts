@@ -58,6 +58,7 @@ describe("Access controller branch coverage", function () {
     ): Promise<EasAccessControl> {
       const Eas = await ethers.getContractFactory("EasAccessControl");
       return (await Eas.deploy(
+        owner.address,
         await mockEas.getAddress(),
         EMAIL_DOMAIN_SCHEMA_UID,
         [idp.address],
@@ -74,6 +75,7 @@ describe("Access controller branch coverage", function () {
 
       await expect(
         Eas.deploy(
+          owner.address,
           ethers.ZeroAddress,
           EMAIL_DOMAIN_SCHEMA_UID,
           [idp.address],
@@ -85,6 +87,7 @@ describe("Access controller branch coverage", function () {
 
       await expect(
         Eas.deploy(
+          owner.address,
           await mockEas.getAddress(),
           ethers.ZeroHash,
           [idp.address],
@@ -95,11 +98,20 @@ describe("Access controller branch coverage", function () {
       ).to.be.revertedWithCustomError(Eas, "InvalidSchema");
 
       await expect(
-        Eas.deploy(await mockEas.getAddress(), EMAIL_DOMAIN_SCHEMA_UID, [], POLICY_EMAIL_DOMAIN, ORION_DOMAIN_HASH, []),
+        Eas.deploy(
+          owner.address,
+          await mockEas.getAddress(),
+          EMAIL_DOMAIN_SCHEMA_UID,
+          [],
+          POLICY_EMAIL_DOMAIN,
+          ORION_DOMAIN_HASH,
+          [],
+        ),
       ).to.be.revertedWithCustomError(Eas, "InvalidAttester");
 
       await expect(
         Eas.deploy(
+          owner.address,
           await mockEas.getAddress(),
           EMAIL_DOMAIN_SCHEMA_UID,
           [ethers.ZeroAddress],
@@ -243,6 +255,7 @@ describe("Access controller branch coverage", function () {
       const Eas = await ethers.getContractFactory("EasAccessControl");
 
       const unrestricted = (await Eas.deploy(
+        owner.address,
         await mockEas.getAddress(),
         NATIONALITY_SCHEMA_UID,
         [idp.address],
@@ -316,6 +329,46 @@ describe("Access controller branch coverage", function () {
       await gate.connect(user1).registerAttestation(uid4);
       await mockEas.corruptAttestation(uid4, uid4, EMAIL_DOMAIN_SCHEMA_UID, user1.address, stranger.address);
       expect(await gate.canHoldShares(user1.address)).to.equal(false);
+    });
+
+    it("allows owner to add and revoke trusted attesters", async function () {
+      const MockEas = await ethers.getContractFactory("MockEAS");
+      const mockEas = (await MockEas.deploy()) as unknown as MockEAS;
+      const gate = await deployEmailGate(mockEas);
+
+      await expect(gate.connect(stranger).setTrustedAttester(stranger.address, true))
+        .to.be.revertedWithCustomError(gate, "OwnableUnauthorizedAccount")
+        .withArgs(stranger.address);
+
+      await expect(gate.connect(owner).setTrustedAttester(ethers.ZeroAddress, true)).to.be.revertedWithCustomError(
+        gate,
+        "InvalidAttester",
+      );
+
+      await expect(gate.connect(owner).setTrustedAttester(stranger.address, true))
+        .to.emit(gate, "TrustedAttesterSet")
+        .withArgs(stranger.address, true);
+
+      const uid = await createRawEmailDomainAttestation(
+        mockEas,
+        stranger.address,
+        user1.address,
+        EMAIL_DOMAIN_SCHEMA_UID,
+        encodeEmailDomainData(),
+      );
+      await gate.connect(user1).registerAttestation(uid);
+      expect(await gate.canHoldShares(user1.address)).to.equal(true);
+
+      await expect(gate.connect(owner).setTrustedAttester(stranger.address, false))
+        .to.emit(gate, "TrustedAttesterSet")
+        .withArgs(stranger.address, false);
+
+      expect(await gate.canHoldShares(user1.address)).to.equal(false);
+
+      await expect(gate.connect(user1).registerAttestation(uid)).to.be.revertedWithCustomError(
+        gate,
+        "UntrustedAttester",
+      );
     });
   });
 
@@ -434,6 +487,57 @@ describe("Access controller branch coverage", function () {
       expect(await gate.canTransferShares(user1.address, "0x")).to.equal(true);
       expect(await gate.canHoldShares(stranger.address)).to.equal(false);
       expect(await gate.supportsInterface("0xffffffff")).to.equal(false);
+    });
+
+    it("rejects stale tickets that would reduce an existing expiry", async function () {
+      const SignedTicket = await ethers.getContractFactory("SignedTicketAccessControl");
+      const gate = (await SignedTicket.deploy(
+        attester.address,
+        SIGNED_TICKET_DOMAIN.name,
+        SIGNED_TICKET_DOMAIN.version,
+      )) as unknown as SignedTicketAccessControl;
+      const gateAddress = await gate.getAddress();
+      const baseExpiry = BigInt((await ethers.provider.getBlock("latest"))!.timestamp + 7200);
+      const claimHashA = ethers.keccak256(ethers.toUtf8Bytes("claim-a"));
+      const claimHashB = ethers.keccak256(ethers.toUtf8Bytes("claim-b"));
+
+      const initial = await signSignedTicket(
+        attester,
+        gateAddress,
+        { wallet: user1.address, claimHash: claimHashA, expiry: baseExpiry },
+        SIGNED_TICKET_DOMAIN,
+      );
+      await gate.submitSignedTicket(initial);
+      expect(await gate.ticketExpiry(user1.address)).to.equal(baseExpiry);
+      expect(await gate.ticketClaimHash(user1.address)).to.equal(claimHashA);
+
+      const sameExpiry = await signSignedTicket(
+        attester,
+        gateAddress,
+        { wallet: user1.address, claimHash: claimHashB, expiry: baseExpiry },
+        SIGNED_TICKET_DOMAIN,
+      );
+      await expect(gate.submitSignedTicket(sameExpiry)).to.be.revertedWithCustomError(gate, "StaleTicket");
+
+      const shorterExpiry = await signSignedTicket(
+        attester,
+        gateAddress,
+        { wallet: user1.address, claimHash: claimHashB, expiry: baseExpiry - 1n },
+        SIGNED_TICKET_DOMAIN,
+      );
+      await expect(gate.submitSignedTicket(shorterExpiry)).to.be.revertedWithCustomError(gate, "StaleTicket");
+
+      const extendedExpiry = await signSignedTicket(
+        attester,
+        gateAddress,
+        { wallet: user1.address, claimHash: claimHashB, expiry: baseExpiry + 3600n },
+        SIGNED_TICKET_DOMAIN,
+      );
+      await expect(gate.submitSignedTicket(extendedExpiry))
+        .to.emit(gate, "SignedTicketSubmitted")
+        .withArgs(user1.address, claimHashB, baseExpiry + 3600n);
+      expect(await gate.ticketExpiry(user1.address)).to.equal(baseExpiry + 3600n);
+      expect(await gate.ticketClaimHash(user1.address)).to.equal(claimHashB);
     });
   });
 

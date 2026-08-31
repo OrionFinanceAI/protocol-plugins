@@ -6,6 +6,7 @@ import {
     IOrionHolderAccessControl,
     IOrionTransferAccessControl
 } from "@orion-finance/protocol/contracts/interfaces/IOrionAccessControl.sol";
+import "@openzeppelin/contracts/access/Ownable2Step.sol";
 import "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 
 /**
@@ -46,6 +47,7 @@ contract EasAccessControl is
     IOrionDepositAccessControl,
     IOrionHolderAccessControl,
     IOrionTransferAccessControl,
+    Ownable2Step,
     ERC165
 {
     /// @notice Policy mode for decoding attestation.data
@@ -75,7 +77,13 @@ contract EasAccessControl is
     /// @param uid The EAS attestation UID
     event AttestationRegistered(address indexed wallet, bytes32 indexed uid);
 
+    /// @notice Emitted when a trusted attester is added or removed
+    /// @param attester The attester address
+    /// @param trusted True to trust, false to revoke
+    event TrustedAttesterSet(address indexed attester, bool trusted);
+
     /// @notice Constructor
+    /// @param initialOwner_ The address of the initial owner
     /// @param eas_ The EAS contract
     /// @param schemaUID_ The schema UID for this product
     /// @param trustedAttesters_ IdP attester allowlist
@@ -83,13 +91,14 @@ contract EasAccessControl is
     /// @param requiredEmailDomainHash_ keccak256(domain) for EmailDomain mode; zero to skip
     /// @param allowedCountryCodes_ ISO country codes for Nationality; empty to skip
     constructor(
+        address initialOwner_,
         IEAS eas_,
         bytes32 schemaUID_,
         address[] memory trustedAttesters_,
         PolicyMode policyMode_,
         bytes32 requiredEmailDomainHash_,
         bytes2[] memory allowedCountryCodes_
-    ) {
+    ) Ownable(initialOwner_) {
         if (address(eas_) == address(0)) revert InvalidEas();
         if (schemaUID_ == bytes32(0)) revert InvalidSchema();
         if (trustedAttesters_.length == 0) revert InvalidAttester();
@@ -118,6 +127,15 @@ contract EasAccessControl is
     error InvalidRecipient();
     error UntrustedAttester();
     error PolicyDenied();
+
+    /// @notice Add or remove a trusted attester
+    /// @param attester The attester address
+    /// @param trusted True to trust, false to revoke
+    function setTrustedAttester(address attester, bool trusted) external onlyOwner {
+        if (attester == address(0)) revert InvalidAttester();
+        trustedAttester[attester] = trusted;
+        emit TrustedAttesterSet(attester, trusted);
+    }
 
     /// @notice Register an EAS attestation UID for msg.sender
     /// @param uid The EAS attestation UID
