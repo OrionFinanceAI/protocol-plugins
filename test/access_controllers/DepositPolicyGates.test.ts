@@ -15,7 +15,13 @@ import type {
 import type { MockBlacklistable } from "../../types/ethers-contracts/contracts/test/access_controllers/index.js";
 import { deployUpgradeableProtocol } from "../helpers/deployUpgradeable";
 import { resetNetwork } from "../helpers/resetNetwork";
-import { createVaultWithGates, impersonateLo, parseUnderlying, requestAndFulfill } from "./helpers/vaultAccessControl";
+import {
+  createVaultWithGates,
+  fundAndApprove,
+  impersonateLo,
+  parseUnderlying,
+  requestAndFulfill,
+} from "./helpers/vaultAccessControl";
 
 describe("Deposit policy gates", function () {
   let owner: SignerWithAddress;
@@ -91,13 +97,17 @@ describe("Deposit policy gates", function () {
   });
 
   describe("TvlCapDepositAccessControl", function () {
-    it("denies deposits when TVL is at cap", async function () {
+    async function deployTvlCapVault(cap: bigint) {
       const vault = await createVaultWithGates(factory, owner, strategist.address);
-      const cap = DEPOSIT_AMOUNT;
-
       const TvlCap = await ethers.getContractFactory("TvlCapDepositAccessControl");
       const depositGate = (await TvlCap.deploy(cap)) as unknown as TvlCapDepositAccessControl;
       await vault.connect(owner).setDepositAccessControl(await depositGate.getAddress());
+      return { vault, depositGate };
+    }
+
+    it("denies deposits when TVL is at cap", async function () {
+      const cap = DEPOSIT_AMOUNT;
+      const { vault } = await deployTvlCapVault(cap);
 
       const loSigner = await impersonateLo(liquidityOrchestrator);
       await vault.connect(loSigner).updateVaultState([], [], cap);
@@ -105,6 +115,57 @@ describe("Deposit policy gates", function () {
       await mockAsset.mint(user1.address, DEPOSIT_AMOUNT);
       await mockAsset.connect(user1).approve(await vault.getAddress(), DEPOSIT_AMOUNT);
       await expect(vault.connect(user1).requestDeposit(DEPOSIT_AMOUNT)).to.be.revertedWithCustomError(
+        vault,
+        "DepositNotAllowed",
+      );
+    });
+
+    it("denies a single deposit request far above the cap at zero TVL", async function () {
+      const cap = DEPOSIT_AMOUNT;
+      const { vault } = await deployTvlCapVault(cap);
+      const overshoot = parseUnderlying("100000");
+
+      await fundAndApprove(mockAsset, vault, user1, overshoot);
+      await expect(vault.connect(user1).requestDeposit(overshoot)).to.be.revertedWithCustomError(
+        vault,
+        "DepositNotAllowed",
+      );
+    });
+
+    it("allows a deposit request that exactly fills the cap at zero TVL", async function () {
+      const cap = DEPOSIT_AMOUNT;
+      const { vault } = await deployTvlCapVault(cap);
+
+      await fundAndApprove(mockAsset, vault, user1, cap);
+      await expect(vault.connect(user1).requestDeposit(cap)).to.emit(vault, "DepositRequest");
+    });
+
+    it("denies a deposit that would exceed cap given partial settled TVL", async function () {
+      const cap = DEPOSIT_AMOUNT;
+      const settledTvl = parseUnderlying("40");
+      const requestAmount = parseUnderlying("70");
+      const { vault } = await deployTvlCapVault(cap);
+
+      const loSigner = await impersonateLo(liquidityOrchestrator);
+      await vault.connect(loSigner).updateVaultState([], [], settledTvl);
+
+      await fundAndApprove(mockAsset, vault, user1, requestAmount);
+      await expect(vault.connect(user1).requestDeposit(requestAmount)).to.be.revertedWithCustomError(
+        vault,
+        "DepositNotAllowed",
+      );
+    });
+
+    it("denies a second queued deposit when pending plus request exceeds cap", async function () {
+      const cap = DEPOSIT_AMOUNT;
+      const queueAmount = parseUnderlying("90");
+      const { vault } = await deployTvlCapVault(cap);
+
+      await fundAndApprove(mockAsset, vault, user1, queueAmount);
+      await expect(vault.connect(user1).requestDeposit(queueAmount)).to.emit(vault, "DepositRequest");
+
+      await fundAndApprove(mockAsset, vault, user2, queueAmount);
+      await expect(vault.connect(user2).requestDeposit(queueAmount)).to.be.revertedWithCustomError(
         vault,
         "DepositNotAllowed",
       );
