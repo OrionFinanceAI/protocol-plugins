@@ -170,5 +170,70 @@ describe("Deposit policy gates", function () {
         "DepositNotAllowed",
       );
     });
+
+    it("allows requestDepositFor from a router when the deposit fits the cap", async function () {
+      const cap = DEPOSIT_AMOUNT;
+      const { vault } = await deployTvlCapVault(cap);
+      const router = user2;
+
+      await mockAsset.mint(router.address, cap);
+      await mockAsset.connect(router).approve(await vault.getAddress(), cap);
+
+      await expect(vault.connect(router).requestDepositFor(user1.address, cap))
+        .to.emit(vault, "DepositRequest")
+        .withArgs(user1.address, cap);
+    });
+
+    it("denies requestDepositFor from a router when the deposit exceeds the cap", async function () {
+      const cap = DEPOSIT_AMOUNT;
+      const { vault } = await deployTvlCapVault(cap);
+      const overshoot = parseUnderlying("100000");
+      const router = user2;
+
+      await mockAsset.mint(router.address, overshoot);
+      await mockAsset.connect(router).approve(await vault.getAddress(), overshoot);
+
+      await expect(vault.connect(router).requestDepositFor(user1.address, overshoot)).to.be.revertedWithCustomError(
+        vault,
+        "DepositNotAllowed",
+      );
+    });
+
+    it("allows router-routed deposits that exactly fill the cap", async function () {
+      const cap = DEPOSIT_AMOUNT;
+      const { vault } = await deployTvlCapVault(cap);
+
+      const Router = await ethers.getContractFactory("OrionDistributionRouter");
+      const orionConfigAddress = await vault.config();
+      const router = await Router.deploy(orionConfigAddress);
+
+      await mockAsset.mint(user1.address, cap);
+      await mockAsset.connect(user1).approve(await router.getAddress(), cap);
+
+      await expect(
+        router.connect(user1).requestDepositWithDistribution(await vault.getAddress(), ethers.id("partner-a"), cap),
+      )
+        .to.emit(vault, "DepositRequest")
+        .withArgs(user1.address, cap);
+    });
+
+    it("denies router-routed deposits that exceed the cap", async function () {
+      const cap = DEPOSIT_AMOUNT;
+      const { vault } = await deployTvlCapVault(cap);
+      const overshoot = parseUnderlying("100000");
+
+      const Router = await ethers.getContractFactory("OrionDistributionRouter");
+      const orionConfigAddress = await vault.config();
+      const router = await Router.deploy(orionConfigAddress);
+
+      await mockAsset.mint(user1.address, overshoot);
+      await mockAsset.connect(user1).approve(await router.getAddress(), overshoot);
+
+      await expect(
+        router
+          .connect(user1)
+          .requestDepositWithDistribution(await vault.getAddress(), ethers.id("partner-a"), overshoot),
+      ).to.be.revertedWithCustomError(vault, "DepositNotAllowed");
+    });
   });
 });

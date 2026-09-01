@@ -616,6 +616,12 @@ describe("Access controller branch coverage", function () {
 
       const validDepositCalldata = vault.interface.encodeFunctionData("requestDeposit", [cap]);
       const overshootCalldata = vault.interface.encodeFunctionData("requestDeposit", [parseUnderlying("100000")]);
+      const validDepositForCalldata = vault.interface.encodeFunctionData("requestDepositFor", [user1.address, cap]);
+      const overshootDepositForCalldata = vault.interface.encodeFunctionData("requestDepositFor", [
+        user1.address,
+        parseUnderlying("100000"),
+      ]);
+      const unknownSelectorCalldata = validDepositForCalldata.replace(/^0x[0-9a-fA-F]{8}/, "0xdeadbeef");
 
       expect(await gate.connect(vaultSigner).canRequestDeposit(user1.address, "0x")).to.equal(false);
       expect(
@@ -623,6 +629,14 @@ describe("Access controller branch coverage", function () {
       ).to.equal(false);
       expect(await gate.connect(vaultSigner).canRequestDeposit(user1.address, overshootCalldata)).to.equal(false);
       expect(await gate.connect(vaultSigner).canRequestDeposit(user1.address, validDepositCalldata)).to.equal(true);
+      expect(await gate.connect(vaultSigner).canRequestDeposit(user1.address, overshootDepositForCalldata)).to.equal(
+        false,
+      );
+      expect(await gate.connect(vaultSigner).canRequestDeposit(user1.address, validDepositForCalldata)).to.equal(true);
+      expect(
+        await gate.connect(vaultSigner).canRequestDeposit(user1.address, validDepositForCalldata.slice(0, 10)),
+      ).to.equal(false);
+      expect(await gate.connect(vaultSigner).canRequestDeposit(user1.address, unknownSelectorCalldata)).to.equal(false);
     });
   });
 });

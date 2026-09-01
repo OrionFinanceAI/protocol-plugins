@@ -26,10 +26,21 @@ contract TvlCapDepositAccessControl is IOrionDepositAccessControl, ERC165 {
 
     /// @inheritdoc IOrionDepositAccessControl
     function canRequestDeposit(address, bytes calldata data) external view override returns (bool) {
-        if (data.length < 36) return false;
-        if (bytes4(data[:4]) != IOrionVault.requestDeposit.selector) return false;
+        if (data.length < 4) return false;
 
-        uint256 assets = abi.decode(data[4:], (uint256));
+        uint256 assets;
+        bytes4 selector = bytes4(data[:4]);
+
+        if (selector == IOrionVault.requestDeposit.selector) {
+            if (data.length < 36) return false;
+            assets = abi.decode(data[4:], (uint256));
+        } else if (selector == IOrionVault.requestDepositFor.selector) {
+            if (data.length < 68) return false;
+            (, assets) = abi.decode(data[4:], (address, uint256));
+        } else {
+            return false;
+        }
+
         IOrionVault vault = IOrionVault(msg.sender);
         uint256 projected = vault.totalAssets() + vault.pendingDeposit(type(uint256).max) + assets;
         return projected <= cap;
