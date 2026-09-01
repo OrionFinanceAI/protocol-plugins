@@ -1,0 +1,13 @@
+#!/usr/bin/env sh
+set -e
+echo "Running pre-push checks..."
+
+cd "$(dirname "$0")/.." || exit
+
+echo "Building..."
+pnpm build
+
+echo "Running tests..."
+pnpm test
+
+echo "Pre-push checks passed! Safe to push."

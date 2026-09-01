@@ -1,0 +1,10 @@
+#!/usr/bin/env sh
+set -e
+echo "Running pre-commit checks..."
+
+cd "$(dirname "$0")/.." || exit
+
+echo "Linting..."
+pnpm lint
+
+echo "Pre-commit checks passed!"

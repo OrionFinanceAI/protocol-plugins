@@ -1,5 +1,5 @@
 import { expect } from "chai";
-import { ethers } from "../helpers/hh";
+import { ethers, networkHelpers } from "../helpers/hh";
 import { SignerWithAddress } from "@nomicfoundation/hardhat-ethers/signers";
 import type {
   AllOfDepositAccessControl,
@@ -18,6 +18,8 @@ import type {
   MockEnsResolver,
 } from "../../types/ethers-contracts/contracts/test/access_controllers/index.js";
 import { resetNetwork } from "../helpers/resetNetwork";
+import { deployUpgradeableProtocol } from "../helpers/deployUpgradeable";
+import { createVaultWithGates, parseUnderlying } from "./helpers/vaultAccessControl";
 import { signSignedTicket } from "./helpers/signedTicket";
 import {
   MOCK_TOTP,
@@ -596,6 +598,45 @@ describe("Access controller branch coverage", function () {
 
       const gate = (await TvlCap.deploy(1000n)) as unknown as TvlCapDepositAccessControl;
       expect(await gate.supportsInterface("0xffffffff")).to.equal(false);
+    });
+
+    it("evaluates canRequestDeposit from vault calldata against projected TVL", async function () {
+      const cap = parseUnderlying("100");
+      const [deployOwner, strategist] = await ethers.getSigners();
+      const deployed = await deployUpgradeableProtocol(deployOwner);
+      const vault = await createVaultWithGates(deployed.transparentVaultFactory, deployOwner, strategist.address);
+
+      const TvlCap = await ethers.getContractFactory("TvlCapDepositAccessControl");
+      const gate = (await TvlCap.deploy(cap)) as unknown as TvlCapDepositAccessControl;
+      await vault.connect(deployOwner).setDepositAccessControl(await gate.getAddress());
+
+      const vaultAddress = await vault.getAddress();
+      await networkHelpers.impersonateAccount(vaultAddress);
+      const vaultSigner = await ethers.getSigner(vaultAddress);
+
+      const validDepositCalldata = vault.interface.encodeFunctionData("requestDeposit", [cap]);
+      const overshootCalldata = vault.interface.encodeFunctionData("requestDeposit", [parseUnderlying("100000")]);
+      const validDepositForCalldata = vault.interface.encodeFunctionData("requestDepositFor", [user1.address, cap]);
+      const overshootDepositForCalldata = vault.interface.encodeFunctionData("requestDepositFor", [
+        user1.address,
+        parseUnderlying("100000"),
+      ]);
+      const unknownSelectorCalldata = validDepositForCalldata.replace(/^0x[0-9a-fA-F]{8}/, "0xdeadbeef");
+
+      expect(await gate.connect(vaultSigner).canRequestDeposit(user1.address, "0x")).to.equal(false);
+      expect(
+        await gate.connect(vaultSigner).canRequestDeposit(user1.address, validDepositCalldata.slice(0, 10)),
+      ).to.equal(false);
+      expect(await gate.connect(vaultSigner).canRequestDeposit(user1.address, overshootCalldata)).to.equal(false);
+      expect(await gate.connect(vaultSigner).canRequestDeposit(user1.address, validDepositCalldata)).to.equal(true);
+      expect(await gate.connect(vaultSigner).canRequestDeposit(user1.address, overshootDepositForCalldata)).to.equal(
+        false,
+      );
+      expect(await gate.connect(vaultSigner).canRequestDeposit(user1.address, validDepositForCalldata)).to.equal(true);
+      expect(
+        await gate.connect(vaultSigner).canRequestDeposit(user1.address, validDepositForCalldata.slice(0, 10)),
+      ).to.equal(false);
+      expect(await gate.connect(vaultSigner).canRequestDeposit(user1.address, unknownSelectorCalldata)).to.equal(false);
     });
   });
 });
