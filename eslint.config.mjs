@@ -30,7 +30,6 @@ export default defineConfig([
     "**/typechain-types",
     "**/.venv",
     "**/.venv-py",
-    "**/scripts",
     // files
     "**/*.env",
     "**/*.log",
