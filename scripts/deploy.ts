@@ -6,7 +6,7 @@
  *   PRIVATE_KEY             — deployer
  *
  * Optional env:
- *   SEPOLIA_ORION_CONFIG_ADDRESS — Sepolia OrionConfig (see .env.example)
+ *   SEPOLIA_ORION_CONFIG_ADDRESS — OrionConfig; defaulted only on --network sepolia
  *   SKIP_VERIFY                  — set "1" to skip printing Etherscan verify commands
  *
  * Usage:
@@ -81,19 +81,31 @@ function parseBytes2List(raw: string | undefined): string[] {
   });
 }
 
-function printVerifyCmd(network: string, address: string, constructorArgs: CtorArg[]): void {
-  const argsStr = constructorArgs
-    .flatMap((a) => (Array.isArray(a) ? a : [a]))
-    .map((a) => String(a))
-    .join(" ");
-  console.log(`  npx hardhat verify --network ${network} ${address} ${argsStr}`);
+function toJsonableCtorArg(a: CtorArg): unknown {
+  if (Array.isArray(a)) return a.map(toJsonableCtorArg);
+  if (typeof a === "bigint") return a.toString();
+  if (typeof a === "string" || typeof a === "boolean" || typeof a === "number") return a;
+  return ethers.hexlify(a);
+}
+
+function writeConstructorArgsModule(filePath: string, constructorArgs: CtorArg[]): void {
+  fs.writeFileSync(filePath, `export default ${JSON.stringify(constructorArgs.map(toJsonableCtorArg), null, 2)};\n`);
+}
+
+function printVerifyCmd(network: string, address: string, argsModuleRel?: string): void {
+  const argsFlag = argsModuleRel !== undefined ? `--constructor-args-path ${argsModuleRel} ` : "";
+  console.log(`  npx hardhat verify --network ${network} ${argsFlag}${address}`);
 }
 
 async function main(): Promise<void> {
   const plugin = parsePlugin();
   const pk = requireEnv("PRIVATE_KEY");
   const deployer = new ethers.Wallet(pk, ethers.provider);
-  const configAddr = ethers.getAddress(process.env.SEPOLIA_ORION_CONFIG_ADDRESS ?? DEFAULT_ORION_CONFIG);
+  const configAddr = ethers.getAddress(
+    networkName === "sepolia"
+      ? (process.env.SEPOLIA_ORION_CONFIG_ADDRESS ?? DEFAULT_ORION_CONFIG)
+      : requireEnv("SEPOLIA_ORION_CONFIG_ADDRESS"),
+  );
   const skipVerify = process.env.SKIP_VERIFY === "1";
   const owner = process.env.OWNER ? ethers.getAddress(process.env.OWNER) : deployer.address;
   const vaultAddr = process.env.VAULT_ADDRESS ? ethers.getAddress(process.env.VAULT_ADDRESS) : null;
@@ -205,9 +217,19 @@ async function main(): Promise<void> {
     console.log("  setVault ok");
   }
 
+  const deploymentsDir = path.join(import.meta.dirname, "..", "deployments");
+  fs.mkdirSync(deploymentsDir, { recursive: true });
+  const stamp = Date.now();
+  const argsFilename = `${networkName}-${stamp}.args.js`;
+
   if (!isLocal && !skipVerify) {
     console.log("\nTo verify on Etherscan, run:");
-    printVerifyCmd(networkName, address, constructorArgs);
+    if (constructorArgs.length === 0) {
+      printVerifyCmd(networkName, address);
+    } else {
+      writeConstructorArgsModule(path.join(deploymentsDir, argsFilename), constructorArgs);
+      printVerifyCmd(networkName, address, `deployments/${argsFilename}`);
+    }
   }
 
   const output: Record<string, unknown> = {
@@ -224,9 +246,7 @@ async function main(): Promise<void> {
     output.vault = vaultAddr;
   }
 
-  const deploymentsDir = path.join(import.meta.dirname, "..", "deployments");
-  fs.mkdirSync(deploymentsDir, { recursive: true });
-  const filename = `${networkName}-${Date.now()}.json`;
+  const filename = `${networkName}-${stamp}.json`;
   fs.writeFileSync(path.join(deploymentsDir, filename), JSON.stringify(output, null, 2));
 
   console.log(`\nDeployment saved to deployments/${filename}`);

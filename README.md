@@ -47,7 +47,7 @@ One Hardhat script deploys a single plugin. KBest *operation* (cron / `submitInt
 | `eas` | `EasAccessControl` | `OWNER`, `EAS`, `SCHEMA_UID`, `TRUSTED_ATTESTERS`, `POLICY_MODE` (`0` email / `1` nationality), `EMAIL_DOMAIN_HASH`, `COUNTRY_CODES` | EAS attestation gate |
 | `all-of` | `AllOfDepositAccessControl` | `GATES` (comma addresses) | AND-composes deposit gates |
 | `router` | `OrionDistributionRouter` | `SEPOLIA_ORION_CONFIG_ADDRESS` | Distributor-routed `requestDepositFor` |
-| `tvl` | `KBestTvlWeightedAverage` | `STRATEGIST_K` (default `10`), optional `VAULT_ADDRESS` | Top-K by TVL, TVL weights |
+| `tvl` | `KBestTvlWeightedAverage` | `SEPOLIA_ORION_CONFIG_ADDRESS`, `STRATEGIST_K` (default `10`), optional `VAULT_ADDRESS` | Top-K by TVL, TVL weights |
 | `apy-equal` | `KBestApyStrategist` | same | Top-K by APY, equal weights |
 | `apy-weighted` | `KBestApyStrategist` | same | Top-K by APY, APY weights |
 
@@ -59,6 +59,8 @@ PLUGIN=router pnpm deploy:sepolia
 ```
 
 Required in `.env`: `PRIVATE_KEY`, `SEPOLIA_RPC_URL`. `PLUGIN` is set on the command. Writes `deployments/<network>-<timestamp>.json`.
+
+`SEPOLIA_ORION_CONFIG_ADDRESS` is used by `router`, `tvl`, `apy-equal`, and `apy-weighted`. On `--network sepolia` it defaults to `0xbDe3025d08681a02a1c6cf70375baBe2152DD06f`. On every other network you must set it; the script will not fall back to the Sepolia address.
 
 ## Adding a new plugin
 
