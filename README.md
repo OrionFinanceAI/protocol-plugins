@@ -47,7 +47,7 @@ One Hardhat script deploys a single plugin. KBest *operation* (cron / `submitInt
 | `eas` | `EasAccessControl` | `OWNER`, `EAS`, `SCHEMA_UID`, `TRUSTED_ATTESTERS`, `POLICY_MODE` (`0` email / `1` nationality), `EMAIL_DOMAIN_HASH`, `COUNTRY_CODES` | EAS attestation gate |
 | `all-of` | `AllOfDepositAccessControl` | `GATES` (comma addresses) | AND-composes deposit gates |
 | `router` | `OrionDistributionRouter` | `SEPOLIA_ORION_CONFIG_ADDRESS` | Distributor-routed `requestDepositFor` |
-| `tvl` | `KBestTvlWeightedAverage` | `SEPOLIA_ORION_CONFIG_ADDRESS`, `STRATEGIST_K` (default `10`), optional `VAULT_ADDRESS` | Top-K by TVL, TVL weights |
+| `tvl` | `KBestTvlWeightedAverage` | `SEPOLIA_ORION_CONFIG_ADDRESS`, `STRATEGIST_K` (default `10`), optional `VAULT_ADDRESS` (vault manager calls `updateStrategist`) | Top-K by TVL, TVL weights |
 | `apy-equal` | `KBestApyStrategist` | same | Top-K by APY, equal weights |
 | `apy-weighted` | `KBestApyStrategist` | same | Top-K by APY, APY weights |
 

@@ -104,6 +104,10 @@ function resolveOrionConfig(): string {
   return ethers.getAddress(requireEnv("SEPOLIA_ORION_CONFIG_ADDRESS"));
 }
 
+function assertStrategistK(value: bigint): void {
+  if (value < 1n || value > 65535n) throw new Error("STRATEGIST_K must be in range 1–65535");
+}
+
 async function main(): Promise<void> {
   const plugin = parsePlugin();
   const pk = requireEnv("PRIVATE_KEY");
@@ -186,21 +190,21 @@ async function main(): Promise<void> {
       constructorArgs = [configAddr];
       break;
     case "tvl":
-      if (k === 0n || k > 65535n) throw new Error("STRATEGIST_K must be in range 1–65535");
+      assertStrategistK(k);
       contractName = "KBestTvlWeightedAverage";
       configAddr = resolveOrionConfig();
       constructorArgs = [deployer.address, configAddr, k];
       isKBest = true;
       break;
     case "apy-equal":
-      if (k === 0n || k > 65535n) throw new Error("STRATEGIST_K must be in range 1–65535");
+      assertStrategistK(k);
       contractName = "KBestApyStrategist";
       configAddr = resolveOrionConfig();
       constructorArgs = [deployer.address, configAddr, k, WEIGHTING_EQUAL];
       isKBest = true;
       break;
     case "apy-weighted":
-      if (k === 0n || k > 65535n) throw new Error("STRATEGIST_K must be in range 1–65535");
+      assertStrategistK(k);
       contractName = "KBestApyStrategist";
       configAddr = resolveOrionConfig();
       constructorArgs = [deployer.address, configAddr, k, WEIGHTING_APY];
@@ -217,11 +221,13 @@ async function main(): Promise<void> {
 
   if (isKBest && vaultAddr) {
     console.log(`Linking to vault ${vaultAddr}...`);
-    const tx = await new ethers.Contract(address, ["function setVault(address) external"], deployer).setVault(
+    const tx = await new ethers.Contract(
       vaultAddr,
-    );
+      ["function updateStrategist(address) external"],
+      deployer,
+    ).updateStrategist(address);
     await tx.wait(confirmations);
-    console.log("  setVault ok");
+    console.log("  updateStrategist ok");
   }
 
   const deploymentsDir = path.join(import.meta.dirname, "..", "deployments");
