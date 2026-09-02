@@ -26,7 +26,7 @@ pnpm lint
 pnpm coverage
 ```
 
-`@orion-finance/protocol` is a direct GitHub dependency (`2.7.1`). `precompile` compiles it into `node_modules` before plugin builds and tests. Integration tests deploy the full protocol stack from those artifacts.
+`@orion-finance/protocol` is a direct GitHub dependency (`2.7.2`). `precompile` compiles it into `node_modules` before plugin builds and tests. Integration tests deploy the full protocol stack from those artifacts.
 
 For protocol architecture and interface docs, see [docs.orionfinance.ai](https://docs.orionfinance.ai/).
 

@@ -63,7 +63,7 @@
     "typescript": "~6.0.3"
   },
   "dependencies": {
-    "@orion-finance/protocol": "github:OrionFinanceAI/protocol#3b4d9770c48774d77aba92b4571cb11c76be193b",
+    "@orion-finance/protocol": "github:OrionFinanceAI/protocol#664f7a87ad1d8348599b47915df262e012e6cfad",
     "@openzeppelin/contracts": "^5.6.1"
   },
   "packageManager": "pnpm@11.10.0+sha512.0b7f8b98060031904c017e3a41eb187a16d40eeb829b95c4f8cb03681761fc4ab53dd219115b9b447f4dce1a05a214764461e7d3703392a9f32f9511ce8c86c8"
