@@ -26,9 +26,39 @@ pnpm lint
 pnpm coverage
 ```
 
-`@orion-finance/protocol` is a direct GitHub dependency (`main`). `precompile` compiles it into `node_modules` before plugin builds and tests. Integration tests deploy the full protocol stack from those artifacts.
+`@orion-finance/protocol` is a direct GitHub dependency (`2.7.1`). `precompile` compiles it into `node_modules` before plugin builds and tests. Integration tests deploy the full protocol stack from those artifacts.
 
 For protocol architecture and interface docs, see [docs.orionfinance.ai](https://docs.orionfinance.ai/).
+
+## Deploy
+
+One Hardhat script deploys a single plugin. KBest *operation* (cron / `submitIntent`) stays in [`IOrionStrategist-template`](https://github.com/OrionFinanceAI/IOrionStrategist-template); this CLI is how you get an address. `manager-only` and `non-transferable` are safe to reuse across vaults; whitelist is per-manager.
+
+| `PLUGIN` | Contract | Extra env | What it does |
+| --- | --- | --- | --- |
+| `whitelist` | `WhitelistAccessControl` | `OWNER` (default: deployer) | Allowlist for deposit / holder / transfer |
+| `manager-only` | `ManagerOnlyDepositAccessControl` | — | Only the vault manager may deposit |
+| `non-transferable` | `NonTransferableSharesAccessControl` | — | Blocks P2P share transfers; redeem still works |
+| `tvl-cap` | `TvlCapDepositAccessControl` | `TVL_CAP` | Caps projected vault TVL |
+| `nft` | `NftOwnerAccessControl` | `CREDENTIAL` | Requires an ERC-721 credential |
+| `blacklist` | `BlacklistRejectAccessControl` | `DENYLIST` | Rejects addresses on a denylist |
+| `signed-ticket` | `SignedTicketAccessControl` | `ATTESTER`, `EIP712_NAME`, `EIP712_VERSION` | Off-chain signed tickets |
+| `ens` | `EnsSubtreeAccessControl` | `ENS_REGISTRY`, `ROOT_NODE` | Wallet must resolve under an ENS root |
+| `eas` | `EasAccessControl` | `OWNER`, `EAS`, `SCHEMA_UID`, `TRUSTED_ATTESTERS`, `POLICY_MODE` (`0` email / `1` nationality), `EMAIL_DOMAIN_HASH`, `COUNTRY_CODES` | EAS attestation gate |
+| `all-of` | `AllOfDepositAccessControl` | `GATES` (comma addresses) | AND-composes deposit gates |
+| `router` | `OrionDistributionRouter` | `SEPOLIA_ORION_CONFIG_ADDRESS` | Distributor-routed `requestDepositFor` |
+| `tvl` | `KBestTvlWeightedAverage` | `STRATEGIST_K` (default `10`), optional `VAULT_ADDRESS` | Top-K by TVL, TVL weights |
+| `apy-equal` | `KBestApyStrategist` | same | Top-K by APY, equal weights |
+| `apy-weighted` | `KBestApyStrategist` | same | Top-K by APY, APY weights |
+
+```bash
+cp .env.example .env
+PLUGIN=whitelist OWNER=0x... pnpm deploy:sepolia
+PLUGIN=manager-only pnpm deploy:sepolia
+PLUGIN=router pnpm deploy:sepolia
+```
+
+Required in `.env`: `PRIVATE_KEY`, `SEPOLIA_RPC_URL`. `PLUGIN` is set on the command. Writes `deployments/<network>-<timestamp>.json`.
 
 ## Adding a new plugin
 

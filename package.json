@@ -26,12 +26,14 @@
     "coverage": "hardhat test --coverage",
     "prettier:check": "prettier --check \"**/*.{js,json,md,sol,ts,yml}\"",
     "prettier:write": "prettier --write \"**/*.{js,json,md,sol,ts,yml}\"",
-    "prepare": "husky"
+    "prepare": "husky",
+    "deploy:sepolia": "hardhat run scripts/deploy.ts --network sepolia"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.6",
     "@eslint/js": "^10.0.1",
     "@nomicfoundation/hardhat-ethers": "^4.0.15",
+    "@nomicfoundation/hardhat-verify": "^3.0.22",
     "@nomicfoundation/hardhat-ethers-chai-matchers": "^3.0.11",
     "@nomicfoundation/hardhat-mocha": "^3.1.0",
     "@nomicfoundation/hardhat-network-helpers": "^3.0.11",
@@ -61,7 +63,7 @@
     "typescript": "~6.0.3"
   },
   "dependencies": {
-    "@orion-finance/protocol": "github:OrionFinanceAI/protocol#main",
+    "@orion-finance/protocol": "github:OrionFinanceAI/protocol#3b4d9770c48774d77aba92b4571cb11c76be193b",
     "@openzeppelin/contracts": "^5.6.1"
   },
   "packageManager": "pnpm@11.10.0+sha512.0b7f8b98060031904c017e3a41eb187a16d40eeb829b95c4f8cb03681761fc4ab53dd219115b9b447f4dce1a05a214764461e7d3703392a9f32f9511ce8c86c8"
