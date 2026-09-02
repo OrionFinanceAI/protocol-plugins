@@ -6,7 +6,7 @@
  *   PRIVATE_KEY             — deployer
  *
  * Optional env:
- *   SEPOLIA_ORION_CONFIG_ADDRESS — OrionConfig; defaulted only on --network sepolia
+ *   SEPOLIA_ORION_CONFIG_ADDRESS — OrionConfig for router / tvl / apy-*; defaulted only on sepolia
  *   SKIP_VERIFY                  — set "1" to skip printing Etherscan verify commands
  *
  * Usage:
@@ -97,15 +97,17 @@ function printVerifyCmd(network: string, address: string, argsModuleRel?: string
   console.log(`  npx hardhat verify --network ${network} ${argsFlag}${address}`);
 }
 
+function resolveOrionConfig(): string {
+  if (networkName === "sepolia") {
+    return ethers.getAddress(process.env.SEPOLIA_ORION_CONFIG_ADDRESS ?? DEFAULT_ORION_CONFIG);
+  }
+  return ethers.getAddress(requireEnv("SEPOLIA_ORION_CONFIG_ADDRESS"));
+}
+
 async function main(): Promise<void> {
   const plugin = parsePlugin();
   const pk = requireEnv("PRIVATE_KEY");
   const deployer = new ethers.Wallet(pk, ethers.provider);
-  const configAddr = ethers.getAddress(
-    networkName === "sepolia"
-      ? (process.env.SEPOLIA_ORION_CONFIG_ADDRESS ?? DEFAULT_ORION_CONFIG)
-      : requireEnv("SEPOLIA_ORION_CONFIG_ADDRESS"),
-  );
   const skipVerify = process.env.SKIP_VERIFY === "1";
   const owner = process.env.OWNER ? ethers.getAddress(process.env.OWNER) : deployer.address;
   const vaultAddr = process.env.VAULT_ADDRESS ? ethers.getAddress(process.env.VAULT_ADDRESS) : null;
@@ -118,6 +120,7 @@ async function main(): Promise<void> {
 
   let contractName: string;
   let constructorArgs: CtorArg[];
+  let configAddr: string | undefined;
   let isKBest = false;
 
   switch (plugin) {
@@ -179,23 +182,27 @@ async function main(): Promise<void> {
       break;
     case "router":
       contractName = "OrionDistributionRouter";
+      configAddr = resolveOrionConfig();
       constructorArgs = [configAddr];
       break;
     case "tvl":
       if (k === 0n || k > 65535n) throw new Error("STRATEGIST_K must be in range 1–65535");
       contractName = "KBestTvlWeightedAverage";
+      configAddr = resolveOrionConfig();
       constructorArgs = [deployer.address, configAddr, k];
       isKBest = true;
       break;
     case "apy-equal":
       if (k === 0n || k > 65535n) throw new Error("STRATEGIST_K must be in range 1–65535");
       contractName = "KBestApyStrategist";
+      configAddr = resolveOrionConfig();
       constructorArgs = [deployer.address, configAddr, k, WEIGHTING_EQUAL];
       isKBest = true;
       break;
     case "apy-weighted":
       if (k === 0n || k > 65535n) throw new Error("STRATEGIST_K must be in range 1–65535");
       contractName = "KBestApyStrategist";
+      configAddr = resolveOrionConfig();
       constructorArgs = [deployer.address, configAddr, k, WEIGHTING_APY];
       isKBest = true;
       break;
