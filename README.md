@@ -60,6 +60,8 @@ PLUGIN=router pnpm deploy:sepolia
 
 Required in `.env`: `PRIVATE_KEY`, `SEPOLIA_RPC_URL`. `PLUGIN` is set on the command. Writes `deployments/<network>-<timestamp>.json`.
 
+On non-local networks, if `ETHERSCAN_API_KEY` is set the script verifies the contract after deploy. Set `SKIP_VERIFY=1` to skip. Without an API key it prints a manual `npx hardhat verify` command instead.
+
 `SEPOLIA_ORION_CONFIG_ADDRESS` is used by `router`, `tvl`, `apy-equal`, and `apy-weighted` only. Other plugins do not read it. On `--network sepolia` it defaults to `0xbDe3025d08681a02a1c6cf70375baBe2152DD06f`. On every other network those four plugins require it; the script will not fall back to the Sepolia address.
 
 ## Adding a new plugin

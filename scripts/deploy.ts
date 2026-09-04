@@ -7,7 +7,8 @@
  *
  * Optional env:
  *   SEPOLIA_ORION_CONFIG_ADDRESS — OrionConfig for router / tvl / apy-*; defaulted only on sepolia
- *   SKIP_VERIFY                  — set "1" to skip printing Etherscan verify commands
+ *   ETHERSCAN_API_KEY            — if set, verify on explorers after deploy
+ *   SKIP_VERIFY                  — set "1" to skip auto-verify and the printed verify command
  *
  * Usage:
  *   PLUGIN=whitelist pnpm deploy:sepolia
@@ -16,6 +17,7 @@
 
 import hre from "hardhat";
 import type { HardhatEthers } from "@nomicfoundation/hardhat-ethers/types";
+import { verifyContract } from "@nomicfoundation/hardhat-verify/verify";
 import fs from "node:fs";
 import path from "node:path";
 import type { BytesLike } from "ethers";
@@ -97,6 +99,44 @@ function printVerifyCmd(network: string, address: string, argsModuleRel?: string
   console.log(`  npx hardhat verify --network ${network} ${argsFlag}${address}`);
 }
 
+function ctorArgsModuleRel(
+  constructorArgs: CtorArg[],
+  deploymentsDir: string,
+  argsFilename: string,
+): string | undefined {
+  if (constructorArgs.length === 0) return undefined;
+  writeConstructorArgsModule(path.join(deploymentsDir, argsFilename), constructorArgs);
+  return `deployments/${argsFilename}`;
+}
+
+async function maybeVerify(
+  address: string,
+  constructorArgs: CtorArg[],
+  deploymentsDir: string,
+  argsFilename: string,
+): Promise<void> {
+  if (isLocal || process.env.SKIP_VERIFY === "1") return;
+
+  const argsRel = ctorArgsModuleRel(constructorArgs, deploymentsDir, argsFilename);
+  const apiKey = process.env.ETHERSCAN_API_KEY?.trim() ?? "";
+
+  if (!apiKey) {
+    console.log("\nTo verify on Etherscan, run:");
+    printVerifyCmd(networkName, address, argsRel);
+    return;
+  }
+
+  console.log("\nVerifying on explorers...");
+  try {
+    await verifyContract({ address, constructorArgs }, hre);
+    console.log("  Verification complete");
+  } catch (err) {
+    console.error("  Auto-verify failed:", err instanceof Error ? err.message : err);
+    console.log("\nTo verify manually, run:");
+    printVerifyCmd(networkName, address, argsRel);
+  }
+}
+
 function resolveOrionConfig(): string {
   if (networkName === "sepolia") {
     return ethers.getAddress(process.env.SEPOLIA_ORION_CONFIG_ADDRESS ?? DEFAULT_ORION_CONFIG);
@@ -112,7 +152,6 @@ async function main(): Promise<void> {
   const plugin = parsePlugin();
   const pk = requireEnv("PRIVATE_KEY");
   const deployer = new ethers.Wallet(pk, ethers.provider);
-  const skipVerify = process.env.SKIP_VERIFY === "1";
   const owner = process.env.OWNER ? ethers.getAddress(process.env.OWNER) : deployer.address;
   const vaultAddr = process.env.VAULT_ADDRESS ? ethers.getAddress(process.env.VAULT_ADDRESS) : null;
   const k = BigInt(process.env.STRATEGIST_K ?? "10");
@@ -235,15 +274,7 @@ async function main(): Promise<void> {
   const stamp = Date.now();
   const argsFilename = `${networkName}-${stamp}.args.js`;
 
-  if (!isLocal && !skipVerify) {
-    console.log("\nTo verify on Etherscan, run:");
-    if (constructorArgs.length === 0) {
-      printVerifyCmd(networkName, address);
-    } else {
-      writeConstructorArgsModule(path.join(deploymentsDir, argsFilename), constructorArgs);
-      printVerifyCmd(networkName, address, `deployments/${argsFilename}`);
-    }
-  }
+  await maybeVerify(address, constructorArgs, deploymentsDir, argsFilename);
 
   const output: Record<string, unknown> = {
     network: networkName,
