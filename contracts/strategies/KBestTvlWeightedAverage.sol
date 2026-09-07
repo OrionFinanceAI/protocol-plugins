@@ -12,6 +12,7 @@ import { ReentrancyGuard } from "@openzeppelin/contracts/utils/ReentrancyGuard.s
 import { IERC4626 } from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import { IERC20Metadata } from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
+import { EnumerableSet } from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 /**
  * @title KBestTvlWeightedAverage
@@ -20,6 +21,21 @@ import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
  * @custom:security-contact security@orionfinance.ai
  */
 contract KBestTvlWeightedAverage is IOrionStrategist, ERC165, Ownable2Step, ReentrancyGuard {
+    using EnumerableSet for EnumerableSet.AddressSet;
+
+    /// @notice Minimum age a checkpoint must reach before it is refreshed, mirroring
+    /// @notice KBestApyStrategist.MIN_WINDOW. Ranking always reads the checkpoint recorded at the
+    /// @notice END of the previous submitIntent() call, never the live value at ranking time -- so an
+    /// @notice attacker inflating an asset's totalAssets() immediately before this call cannot affect
+    /// @notice this cycle's ranking, only a checkpoint that will not take effect for at least this long.
+    uint256 internal constant MIN_WINDOW = 1 hours;
+
+    /// @dev Packed into one storage slot (128 + 48 = 176 bits), mirroring KBestApyStrategist.Checkpoint.
+    struct Checkpoint {
+        uint128 tvl;
+        uint48 timestamp;
+    }
+
     /// @notice The Orion configuration contract.
     IOrionConfig public immutable CONFIG;
     /// @notice Protocol underlying asset cached at deployment.
@@ -35,6 +51,19 @@ contract KBestTvlWeightedAverage is IOrionStrategist, ERC165, Ownable2Step, Reen
     /// @notice The vault this strategist is linked to. Set once via setVault; never changes.
     address private _vault;
 
+    mapping(address => Checkpoint) private _checkpoints;
+
+    /// @notice Assets whitelisted as of our last submitIntent (or construction). Used to detect when
+    /// @notice an asset is newly whitelisted or re-listed after removal, so its checkpoint is reset
+    /// @notice instead of bootstrapping ranking from a stale, pre-delisting TVL.
+    EnumerableSet.AddressSet private _trackedAssets;
+
+    /// @notice Emitted when a TVL checkpoint is recorded for an asset (end of submitIntent).
+    /// @param asset The address of the asset for which the checkpoint is recorded.
+    /// @param tvl The normalized TVL value at the checkpoint.
+    /// @param timestamp The timestamp when the checkpoint was recorded.
+    event CheckpointRecorded(address indexed asset, uint128 indexed tvl, uint48 indexed timestamp);
+
     /// @notice Constructor to initialize the strategist with owner, config address, and number of top assets.
     /// @param owner_ Owner of this contract (can update k).
     /// @param config_ The Orion configuration contract address.
@@ -46,6 +75,20 @@ contract KBestTvlWeightedAverage is IOrionStrategist, ERC165, Ownable2Step, Reen
         PRICE_DECIMALS = CONFIG.priceAdapterDecimals();
         PRICE_REGISTRY = IPriceAdapterRegistry(CONFIG.priceAdapterRegistry());
         k = k_;
+
+        // Deliberately do NOT pre-record TVL checkpoints here, unlike KBestApyStrategist's
+        // share-price baseline (meaningful even for a freshly-deployed, empty vault since a share is
+        // worth the same regardless of how much is deposited). TVL is an absolute size, so a snapshot
+        // taken before any real deposits exist would just capture a near-empty vault -- and because
+        // checkpoints only refresh after MIN_WINDOW, the first real submitIntent() call would then be
+        // stuck ranking against that meaningless baseline instead of bootstrapping from live TVLs.
+        // Only the tracked-asset set is seeded, so relisting is still detected correctly later.
+        address[] memory assets = CONFIG.getAllWhitelistedAssets();
+        uint16 n = uint16(assets.length);
+        for (uint16 i = 0; i < n; ++i) {
+            // slither-disable-next-line unused-return
+            _trackedAssets.add(assets[i]);
+        }
     }
 
     /// @inheritdoc IOrionStrategist
@@ -65,6 +108,8 @@ contract KBestTvlWeightedAverage is IOrionStrategist, ERC165, Ownable2Step, Reen
 
         address[] memory assets = CONFIG.getAllWhitelistedAssets();
         uint16 n = uint16(assets.length);
+        _syncTrackedAssets(assets, n);
+
         uint256[] memory tvls = _getAssetTVLs(assets, n);
 
         uint16 kActual = uint16(Math.min(k, n));
@@ -72,7 +117,11 @@ contract KBestTvlWeightedAverage is IOrionStrategist, ERC165, Ownable2Step, Reen
         (address[] memory tokens, uint256[] memory topTvls) = _selectTopKAssets(assets, tvls, n, kActual);
 
         IOrionTransparentVault.IntentPosition[] memory intent = _calculatePositions(tokens, topTvls, kActual);
+
+        // slither-disable-start reentrancy-no-eth
         IOrionTransparentVault(vault_).submitIntent(intent);
+        _recordCheckpointsForAssets(assets, n);
+        // slither-disable-end reentrancy-no-eth
     }
 
     /// @inheritdoc IERC165
@@ -86,14 +135,19 @@ contract KBestTvlWeightedAverage is IOrionStrategist, ERC165, Ownable2Step, Reen
         k = kNew;
     }
 
-    /// @dev Fetches TVL for each asset and normalizes it to a common price unit so that
-    ///      ERC4626 vaults backed by different underlying tokens (and different decimals) are
-    ///      directly comparable. Falls back to 1 whenever any external call fails so that
-    ///      unresolvable assets are ranked last rather than causing a revert.
+    /// @dev Returns each asset's checkpointed TVL, normalized to a common price unit so that ERC4626
+    ///      vaults backed by different underlying tokens (and different decimals) are directly
+    ///      comparable. Ranking reads the checkpoint recorded at the end of the PREVIOUS
+    ///      submitIntent() call (never the live value at ranking time), so a same-block TVL inflation
+    ///      cannot influence this cycle's selection or weights. An asset with no checkpoint yet
+    ///      (first-ever call, or the call right after it was newly listed / re-listed) bootstraps from
+    ///      the live value instead, since there is no prior snapshot to fall back to.
     function _getAssetTVLs(address[] memory assets, uint16 n) internal view returns (uint256[] memory tvls) {
         tvls = new uint256[](n);
         for (uint16 i = 0; i < n; ++i) {
-            tvls[i] = _normalizedTvl(assets[i]);
+            Checkpoint memory cp = _checkpoints[assets[i]];
+            // slither-disable-next-line incorrect-equality
+            tvls[i] = cp.timestamp == 0 ? _normalizedTvl(assets[i]) : uint256(cp.tvl);
         }
     }
 
@@ -140,6 +194,55 @@ contract KBestTvlWeightedAverage is IOrionStrategist, ERC165, Ownable2Step, Reen
 
         uint256 normalized = Math.mulDiv(rawTvl, underlyingPrice, 10 ** underlyingDecimals);
         return normalized == 0 ? 1 : normalized;
+    }
+
+    /// @dev Records checkpoints for a fixed asset list.
+    function _recordCheckpointsForAssets(address[] memory assets, uint16 n) internal {
+        for (uint16 i = 0; i < n; ++i) {
+            _recordCheckpoint(assets[i]);
+        }
+    }
+
+    /// @dev Skips if the existing checkpoint is less than MIN_WINDOW old, so ranking always reads a
+    ///      value that is at least MIN_WINDOW stale relative to whatever triggered the refresh.
+    function _recordCheckpoint(address asset) internal {
+        Checkpoint memory existing = _checkpoints[asset];
+        if (existing.timestamp != 0 && block.timestamp - uint256(existing.timestamp) < MIN_WINDOW) return;
+        uint256 tvl = _normalizedTvl(asset);
+        if (tvl > type(uint128).max) return;
+        uint48 now_ = uint48(block.timestamp);
+        _checkpoints[asset] = Checkpoint({ tvl: uint128(tvl), timestamp: now_ });
+        emit CheckpointRecorded(asset, uint128(tvl), now_);
+    }
+
+    /// @dev Resets the checkpoint for any asset not seen as whitelisted on our last call -- covers
+    ///      both genuinely new assets and assets re-listed after removal, so ranking never bootstraps
+    ///      a re-listed asset from a stale, pre-delisting TVL. Also drops bookkeeping for assets no
+    ///      longer whitelisted, so a future re-list is detected the same way.
+    function _syncTrackedAssets(address[] memory assets, uint16 n) internal {
+        for (uint16 i = 0; i < n; ++i) {
+            if (_trackedAssets.add(assets[i])) {
+                // `add` returns true only when newly inserted: first time seen, or a relist.
+                delete _checkpoints[assets[i]];
+            }
+        }
+
+        uint256 trackedIdx = _trackedAssets.length();
+        while (trackedIdx > 0) {
+            --trackedIdx;
+            address tracked = _trackedAssets.at(trackedIdx);
+            bool stillWhitelisted = false;
+            for (uint16 j = 0; j < n; ++j) {
+                if (assets[j] == tracked) {
+                    stillWhitelisted = true;
+                    break;
+                }
+            }
+            if (!stillWhitelisted) {
+                // slither-disable-next-line unused-return
+                _trackedAssets.remove(tracked);
+            }
+        }
     }
 
     function _selectTopKAssets(

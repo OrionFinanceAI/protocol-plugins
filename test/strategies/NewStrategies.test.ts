@@ -1,19 +1,21 @@
 import type { SignerWithAddress } from "@nomicfoundation/hardhat-ethers/signers";
 import { expect } from "chai";
 import type { ContractTransactionReceipt } from "ethers";
-import { ethers } from "../helpers/hh";
+import { ethers, networkHelpers } from "../helpers/hh";
 import { deployUpgradeableProtocol } from "../helpers/deployUpgradeable";
 import { resetNetwork } from "../helpers/resetNetwork";
 import { getProtocolFactory, getProtocolContractAt } from "../helpers/protocolArtifacts";
+import { impersonateLo } from "../access_controllers/helpers/vaultAccessControl";
 
 import type {
+  LiquidityOrchestrator,
   MockERC4626Asset,
   MockUnderlyingAsset,
   OrionConfig,
   OrionTransparentVault,
   TransparentVaultFactory,
 } from "@orion-finance/protocol/types/ethers-contracts/index.js";
-import type { KBestApyStrategist } from "../../types/ethers-contracts/index.js";
+import type { KBestApyStrategist, KBestTvlWeightedAverage } from "../../types/ethers-contracts/index.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
@@ -98,10 +100,10 @@ async function advancePastMinWindow(): Promise<void> {
 
 /** Parse CheckpointRecorded from a strategist tx receipt (ignores other contracts' logs). */
 async function checkpointRecordedForAsset(
-  strategy: KBestApyStrategist,
+  strategy: KBestApyStrategist | KBestTvlWeightedAverage,
   receipt: ContractTransactionReceipt,
   assetAddress: string,
-): Promise<{ sharePrice: bigint; timestamp: bigint } | undefined> {
+): Promise<{ value: bigint; timestamp: bigint } | undefined> {
   const iface = strategy.interface;
   const strategyAddr = (await strategy.getAddress()).toLowerCase();
   const want = assetAddress.toLowerCase();
@@ -113,7 +115,7 @@ async function checkpointRecordedForAsset(
       const asset = (parsed.args[0] as string).toLowerCase();
       if (asset !== want) continue;
       return {
-        sharePrice: BigInt(parsed.args[1].toString()),
+        value: BigInt(parsed.args[1].toString()),
         timestamp: BigInt(parsed.args[2].toString()),
       };
     } catch {
@@ -134,6 +136,7 @@ describe("New Strategies", function () {
 
   let orionConfig: OrionConfig;
   let transparentVaultFactory: TransparentVaultFactory;
+  let deployedLiquidityOrchestrator: LiquidityOrchestrator;
   let underlyingAsset: MockUnderlyingAsset;
   const underlyingDecimals = 12;
 
@@ -162,6 +165,7 @@ describe("New Strategies", function () {
     const deployed = await deployUpgradeableProtocol(owner, underlyingAsset, owner);
     orionConfig = deployed.orionConfig;
     transparentVaultFactory = deployed.transparentVaultFactory;
+    deployedLiquidityOrchestrator = deployed.liquidityOrchestrator;
 
     const MockPriceAdapterFactory = await getProtocolFactory("MockPriceAdapter");
     mockPriceAdapter = await MockPriceAdapterFactory.deploy();
@@ -224,7 +228,7 @@ describe("New Strategies", function () {
       const cp = await checkpointRecordedForAsset(strategy, receipt!, await assetA.getAddress());
       expect(cp).to.not.equal(undefined);
       // ERC4626 initial share price: convertToAssets(1e12) = 1e12 (1:1 with 12-dec underlying).
-      expect(cp!.sharePrice).to.equal(10n ** BigInt(underlyingDecimals));
+      expect(cp!.value).to.equal(10n ** BigInt(underlyingDecimals));
       expect(cp!.timestamp).to.be.gt(0n);
     });
 
@@ -340,6 +344,145 @@ describe("New Strategies", function () {
       expect(BigInt(weights[0])).to.equal(333_333_334n);
       expect(BigInt(weights[1])).to.equal(333_333_333n);
       expect(BigInt(weights[2])).to.equal(333_333_333n);
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  describe("TVL checkpoint mechanics (KBestTvlWeightedAverage)", function () {
+    let strategy: KBestTvlWeightedAverage;
+    let vault: OrionTransparentVault;
+
+    beforeEach(async function () {
+      const F = await ethers.getContractFactory("KBestTvlWeightedAverage");
+      strategy = (await F.deploy(
+        owner.address,
+        await orionConfig.getAddress(),
+        3,
+      )) as unknown as KBestTvlWeightedAverage;
+      await strategy.waitForDeployment();
+      vault = await createVault(transparentVaultFactory, owner, await strategy.getAddress());
+    });
+
+    it("first submitIntent bootstraps ranking from the live TVL (no checkpoint exists yet)", async function () {
+      await mintAndDeposit(underlyingAsset, assetA, user, 1000, underlyingDecimals);
+      await mintAndDeposit(underlyingAsset, assetB, user, 500, underlyingDecimals);
+      await mintAndDeposit(underlyingAsset, assetC, user, 250, underlyingDecimals);
+
+      await strategy.submitIntent();
+      const [tokens] = await vault.getIntent();
+      expect(tokens[0]).to.equal(await assetA.getAddress());
+    });
+
+    it("submitIntent emits CheckpointRecorded with the normalized TVL and current timestamp", async function () {
+      await mintAndDeposit(underlyingAsset, assetA, user, 1000, underlyingDecimals);
+      const tx = await strategy.submitIntent();
+      const receipt = await tx.wait();
+      expect(receipt).to.not.equal(null);
+      const cp = await checkpointRecordedForAsset(strategy, receipt!, await assetA.getAddress());
+      expect(cp).to.not.equal(undefined);
+      // assetA's underlying is the protocol underlying, so normalization scales rawTvl by
+      // 10^priceAdapterDecimals / 10^underlyingDecimals (see _normalizedTvl).
+      const priceDecimals = await orionConfig.priceAdapterDecimals();
+      const expectedNormalizedTvl =
+        (ethers.parseUnits("1000", underlyingDecimals) * 10n ** BigInt(priceDecimals)) /
+        10n ** BigInt(underlyingDecimals);
+      expect(cp!.value).to.equal(expectedNormalizedTvl);
+      expect(cp!.timestamp).to.be.gt(0n);
+    });
+
+    it("ranking uses the checkpoint from the previous call, not a same-cycle TVL inflation", async function () {
+      // A starts as the largest asset; B and C start small.
+      await mintAndDeposit(underlyingAsset, assetA, user, 1000, underlyingDecimals);
+      await mintAndDeposit(underlyingAsset, assetB, user, 10, underlyingDecimals);
+      await mintAndDeposit(underlyingAsset, assetC, user, 10, underlyingDecimals);
+
+      // Bootstrap call: no checkpoint yet, ranks off the live values above. Checkpoints A/B/C
+      // recorded at the end of this call.
+      await strategy.submitIntent();
+      let [tokens] = await vault.getIntent();
+      expect(tokens[0]).to.equal(await assetA.getAddress());
+
+      // Simulate a same-cycle flash-loan-style inflation: deposit a huge amount into C right
+      // before calling submitIntent() again, well within MIN_WINDOW of the last checkpoint.
+      await mintAndDeposit(underlyingAsset, assetC, user, 1_000_000, underlyingDecimals);
+      expect(await assetC.totalAssets()).to.be.gt(await assetA.totalAssets());
+
+      // Ranking must still reflect the checkpoint from the previous call (A largest), not C's
+      // just-inflated live totalAssets().
+      await strategy.submitIntent();
+      [tokens] = await vault.getIntent();
+      expect(tokens[0]).to.equal(await assetA.getAddress());
+    });
+
+    it("a checkpoint only refreshes after MIN_WINDOW has elapsed, even across multiple calls", async function () {
+      await mintAndDeposit(underlyingAsset, assetA, user, 1000, underlyingDecimals);
+      await mintAndDeposit(underlyingAsset, assetB, user, 10, underlyingDecimals);
+
+      await strategy.submitIntent(); // bootstrap checkpoint: A=1000
+
+      // Inflate B and call again immediately (still within MIN_WINDOW): checkpoint must not move.
+      await mintAndDeposit(underlyingAsset, assetB, user, 1_000_000, underlyingDecimals);
+      const tx = await strategy.submitIntent();
+      const receipt = await tx.wait();
+      const cpB = await checkpointRecordedForAsset(strategy, receipt!, await assetB.getAddress());
+      expect(cpB).to.equal(undefined); // no CheckpointRecorded event -> refresh was skipped
+
+      let [tokens] = await vault.getIntent();
+      expect(tokens[0]).to.equal(await assetA.getAddress()); // still ranked off the stale checkpoint
+
+      // Once MIN_WINDOW has elapsed, the next call both refreshes the checkpoint and, on the call
+      // after that, ranks off the now-current (inflated) value.
+      await advancePastMinWindow();
+      await strategy.submitIntent(); // this call still ranks off the old checkpoint, but refreshes it
+      [tokens] = await vault.getIntent();
+      expect(tokens[0]).to.equal(await assetA.getAddress());
+
+      await strategy.submitIntent(); // now ranks off the refreshed checkpoint
+      [tokens] = await vault.getIntent();
+      expect(tokens[0]).to.equal(await assetB.getAddress());
+    });
+
+    it("a relisted asset's checkpoint is reset, not carried over across a delisted gap", async function () {
+      // A dominates initially; B and C start small so neither is checkpointed as a top asset.
+      await mintAndDeposit(underlyingAsset, assetA, user, 1000, underlyingDecimals);
+      await mintAndDeposit(underlyingAsset, assetB, user, 10, underlyingDecimals);
+      await mintAndDeposit(underlyingAsset, assetC, user, 10, underlyingDecimals);
+
+      await strategy.connect(owner).updateParameters(1);
+      await strategy.submitIntent(); // checkpoints A/B/C recorded: A large, B/C small
+
+      const assetCAddress = await assetC.getAddress();
+      await orionConfig.connect(owner).removeWhitelistedAsset(assetCAddress);
+      const loSigner = await impersonateLo(deployedLiquidityOrchestrator);
+      await orionConfig.connect(loSigner).completeAssetsRemoval([]);
+      await networkHelpers.stopImpersonatingAccount(await deployedLiquidityOrchestrator.getAddress());
+      expect(await orionConfig.getAllWhitelistedAssets()).to.not.include(assetCAddress);
+
+      // A submitIntent call with C absent is what drops it from the strategist's tracked-asset set.
+      await strategy.submitIntent();
+
+      // While delisted (invisible to the strategist), C's real TVL grows enormously -- e.g. another
+      // integration deposits into it directly. Nothing about the config whitelist state resets an
+      // ERC4626's actual holdings.
+      await mintAndDeposit(underlyingAsset, assetC, user, 1_000_000, underlyingDecimals);
+
+      // Re-list C.
+      await orionConfig
+        .connect(owner)
+        .addWhitelistedAsset(
+          assetCAddress,
+          await mockPriceAdapter.getAddress(),
+          await mockExecutionAdapter.getAddress(),
+        );
+
+      // If C's old (small, pre-delist) checkpoint were incorrectly retained, ranking would still see
+      // it as small and A would stay first. With the fix, relisting resets C's checkpoint, so this
+      // call bootstraps it from its current (now enormous) live TVL and ranks it first instead.
+      await strategy.connect(owner).updateParameters(1);
+      await strategy.submitIntent();
+      const [tokens] = await vault.getIntent();
+      expect(tokens[0]).to.equal(assetCAddress);
     });
   });
 
