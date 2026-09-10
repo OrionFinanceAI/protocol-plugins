@@ -27,6 +27,7 @@ coverage.json
 
 scripts/*.ts
 !scripts/deploy.ts
+!scripts/orion-config-env.ts
 research/
 
 # files

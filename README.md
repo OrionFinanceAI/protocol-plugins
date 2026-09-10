@@ -16,7 +16,7 @@ If you have an idea for a strategist, access policy, or depositor flow, this is 
 
 ## Development
 
-Requires Node.js ≥ 22.13 and [pnpm](https://pnpm.io/).
+Requires Node.js ≥ 24 and [pnpm](https://pnpm.io/).
 
 ```bash
 pnpm install
@@ -40,14 +40,15 @@ One Hardhat script deploys a single plugin. KBest *operation* (cron / `submitInt
 | `manager-only` | `ManagerOnlyDepositAccessControl` | — | Only the vault manager may deposit |
 | `non-transferable` | `NonTransferableSharesAccessControl` | — | Blocks P2P share transfers; redeem still works |
 | `tvl-cap` | `TvlCapDepositAccessControl` | `TVL_CAP` | Caps projected vault TVL |
+| `max-ticket` | `MaxTicketSizeDepositAccessControl` | `MAX_TICKET_SIZE` | Caps per-depositor cumulative deposit (pending + settled + this request) |
 | `nft` | `NftOwnerAccessControl` | `CREDENTIAL` | Requires an ERC-721 credential |
 | `blacklist` | `BlacklistRejectAccessControl` | `DENYLIST` | Rejects addresses on a denylist |
 | `signed-ticket` | `SignedTicketAccessControl` | `ATTESTER`, `EIP712_NAME`, `EIP712_VERSION` | Off-chain signed tickets |
 | `ens` | `EnsSubtreeAccessControl` | `ENS_REGISTRY`, `ROOT_NODE` | Wallet must resolve under an ENS root |
 | `eas` | `EasAccessControl` | `OWNER`, `EAS`, `SCHEMA_UID`, `TRUSTED_ATTESTERS`, `POLICY_MODE` (`0` email / `1` nationality), `EMAIL_DOMAIN_HASH`, `COUNTRY_CODES` | EAS attestation gate |
 | `all-of` | `AllOfDepositAccessControl` | `GATES` (comma addresses) | AND-composes deposit gates |
-| `router` | `OrionDistributionRouter` | `SEPOLIA_ORION_CONFIG_ADDRESS` | Distributor-routed `requestDepositFor` |
-| `tvl` | `KBestTvlWeightedAverage` | `SEPOLIA_ORION_CONFIG_ADDRESS`, `STRATEGIST_K` (default `10`), optional `VAULT_ADDRESS` (vault manager calls `updateStrategist`) | Top-K by TVL, TVL weights |
+| `router` | `OrionDistributionRouter` | `SEPOLIA_ORION_CONFIG_ADDRESS` / `MAINNET_ORION_CONFIG_ADDRESS` | Distributor-routed `requestDepositFor` |
+| `tvl` | `KBestTvlWeightedAverage` | `SEPOLIA_ORION_CONFIG_ADDRESS` / `MAINNET_ORION_CONFIG_ADDRESS`, `STRATEGIST_K` (default `10`), optional `VAULT_ADDRESS` (vault manager calls `updateStrategist`) | Top-K by TVL, TVL weights |
 | `apy-equal` | `KBestApyStrategist` | same | Top-K by APY, equal weights |
 | `apy-weighted` | `KBestApyStrategist` | same | Top-K by APY, APY weights |
 
@@ -58,9 +59,11 @@ PLUGIN=manager-only pnpm deploy:sepolia
 PLUGIN=router pnpm deploy:sepolia
 ```
 
-Required in `.env`: `PRIVATE_KEY`, `SEPOLIA_RPC_URL`. `PLUGIN` is set on the command. Writes `deployments/<network>-<timestamp>.json`.
+Required in `.env`: `PRIVATE_KEY`, plus `SEPOLIA_RPC_URL` and/or `MAINNET_RPC_URL` for the target network (no bare `RPC_URL`). `PLUGIN` is set on the command. Writes `deployments/<network>-<timestamp>.json`.
 
-`SEPOLIA_ORION_CONFIG_ADDRESS` is used by `router`, `tvl`, `apy-equal`, and `apy-weighted` only. Other plugins do not read it. On `--network sepolia` it defaults to `0xbDe3025d08681a02a1c6cf70375baBe2152DD06f`. On every other network those four plugins require it; the script will not fall back to the Sepolia address.
+On non-local networks, if `ETHERSCAN_API_KEY` is set the script verifies the contract after deploy. Set `SKIP_VERIFY=1` to skip. Without an API key it prints a manual `npx hardhat verify` command instead.
+
+`SEPOLIA_ORION_CONFIG_ADDRESS` / `MAINNET_ORION_CONFIG_ADDRESS` are used by `router`, `tvl`, `apy-equal`, and `apy-weighted` only. Other plugins do not read them. `--network mainnet` requires `MAINNET_ORION_CONFIG_ADDRESS`; `sepolia` / `hardhat` / `localhost` require `SEPOLIA_ORION_CONFIG_ADDRESS`. No default, no `ORION_CONFIG_ADDRESS`.
 
 ## Adding a new plugin
 
