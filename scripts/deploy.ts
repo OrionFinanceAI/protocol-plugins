@@ -6,7 +6,8 @@
  *   PRIVATE_KEY             — deployer
  *
  * Optional env:
- *   SEPOLIA_ORION_CONFIG_ADDRESS — OrionConfig for router / tvl / apy-*; defaulted only on sepolia
+ *   SEPOLIA_ORION_CONFIG_ADDRESS / MAINNET_ORION_CONFIG_ADDRESS — OrionConfig for
+ *                             router / tvl / apy-*; keyed by `--network`. No default.
  *   ETHERSCAN_API_KEY            — if set, verify on explorers after deploy
  *   SKIP_VERIFY                  — set "1" to skip auto-verify and the printed verify command
  *
@@ -21,8 +22,8 @@ import { verifyContract } from "@nomicfoundation/hardhat-verify/verify";
 import fs from "node:fs";
 import path from "node:path";
 import type { BytesLike } from "ethers";
+import { resolveOrionConfigAddress } from "./orion-config-env.js";
 
-const DEFAULT_ORION_CONFIG = "0xbDe3025d08681a02a1c6cf70375baBe2152DD06f";
 const WEIGHTING_EQUAL = 0n;
 const WEIGHTING_APY = 1n;
 
@@ -137,13 +138,6 @@ async function maybeVerify(
   }
 }
 
-function resolveOrionConfig(): string {
-  if (networkName === "sepolia") {
-    return ethers.getAddress(process.env.SEPOLIA_ORION_CONFIG_ADDRESS ?? DEFAULT_ORION_CONFIG);
-  }
-  return ethers.getAddress(requireEnv("SEPOLIA_ORION_CONFIG_ADDRESS"));
-}
-
 function assertStrategistK(value: bigint): void {
   if (value < 1n || value > 65535n) throw new Error("STRATEGIST_K must be in range 1–65535");
 }
@@ -225,27 +219,27 @@ async function main(): Promise<void> {
       break;
     case "router":
       contractName = "OrionDistributionRouter";
-      configAddr = resolveOrionConfig();
+      configAddr = resolveOrionConfigAddress(networkName);
       constructorArgs = [configAddr];
       break;
     case "tvl":
       assertStrategistK(k);
       contractName = "KBestTvlWeightedAverage";
-      configAddr = resolveOrionConfig();
+      configAddr = resolveOrionConfigAddress(networkName);
       constructorArgs = [deployer.address, configAddr, k];
       isKBest = true;
       break;
     case "apy-equal":
       assertStrategistK(k);
       contractName = "KBestApyStrategist";
-      configAddr = resolveOrionConfig();
+      configAddr = resolveOrionConfigAddress(networkName);
       constructorArgs = [deployer.address, configAddr, k, WEIGHTING_EQUAL];
       isKBest = true;
       break;
     case "apy-weighted":
       assertStrategistK(k);
       contractName = "KBestApyStrategist";
-      configAddr = resolveOrionConfig();
+      configAddr = resolveOrionConfigAddress(networkName);
       constructorArgs = [deployer.address, configAddr, k, WEIGHTING_APY];
       isKBest = true;
       break;
