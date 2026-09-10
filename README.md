@@ -40,6 +40,7 @@ One Hardhat script deploys a single plugin. KBest *operation* (cron / `submitInt
 | `manager-only` | `ManagerOnlyDepositAccessControl` | — | Only the vault manager may deposit |
 | `non-transferable` | `NonTransferableSharesAccessControl` | — | Blocks P2P share transfers; redeem still works |
 | `tvl-cap` | `TvlCapDepositAccessControl` | `TVL_CAP` | Caps projected vault TVL |
+| `max-ticket` | `MaxTicketSizeDepositAccessControl` | `MAX_TICKET_SIZE` | Caps per-depositor cumulative deposit (pending + settled + this request) |
 | `nft` | `NftOwnerAccessControl` | `CREDENTIAL` | Requires an ERC-721 credential |
 | `blacklist` | `BlacklistRejectAccessControl` | `DENYLIST` | Rejects addresses on a denylist |
 | `signed-ticket` | `SignedTicketAccessControl` | `ATTESTER`, `EIP712_NAME`, `EIP712_VERSION` | Off-chain signed tickets |

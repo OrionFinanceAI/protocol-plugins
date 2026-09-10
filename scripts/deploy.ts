@@ -32,6 +32,7 @@ const VALID_PLUGINS = [
   "manager-only",
   "non-transferable",
   "tvl-cap",
+  "max-ticket",
   "nft",
   "blacklist",
   "signed-ticket",
@@ -176,6 +177,10 @@ async function main(): Promise<void> {
     case "tvl-cap":
       contractName = "TvlCapDepositAccessControl";
       constructorArgs = [BigInt(requireEnv("TVL_CAP"))];
+      break;
+    case "max-ticket":
+      contractName = "MaxTicketSizeDepositAccessControl";
+      constructorArgs = [BigInt(requireEnv("MAX_TICKET_SIZE"))];
       break;
     case "nft":
       contractName = "NftOwnerAccessControl";

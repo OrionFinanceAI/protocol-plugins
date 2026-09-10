@@ -9,6 +9,7 @@ import type {
 import type {
   AllOfDepositAccessControl,
   TvlCapDepositAccessControl,
+  MaxTicketSizeDepositAccessControl,
   WhitelistAccessControl,
   BlacklistRejectAccessControl,
 } from "../../types/ethers-contracts/index.js";
@@ -234,6 +235,110 @@ describe("Deposit policy gates", function () {
           .connect(user1)
           .requestDepositWithDistribution(await vault.getAddress(), ethers.id("partner-a"), overshoot),
       ).to.be.revertedWithCustomError(vault, "DepositNotAllowed");
+    });
+  });
+
+  describe("MaxTicketSizeDepositAccessControl", function () {
+    async function deployMaxTicketVault(maxTicketSize: bigint) {
+      const vault = await createVaultWithGates(factory, owner, strategist.address);
+      const MaxTicket = await ethers.getContractFactory("MaxTicketSizeDepositAccessControl");
+      const depositGate = (await MaxTicket.deploy(maxTicketSize)) as unknown as MaxTicketSizeDepositAccessControl;
+      await vault.connect(owner).setDepositAccessControl(await depositGate.getAddress());
+      return { vault, depositGate };
+    }
+
+    it("allows a deposit request that exactly fills the ticket at zero position", async function () {
+      const maxTicket = DEPOSIT_AMOUNT;
+      const { vault } = await deployMaxTicketVault(maxTicket);
+
+      await fundAndApprove(mockAsset, vault, user1, maxTicket);
+      await expect(vault.connect(user1).requestDeposit(maxTicket)).to.emit(vault, "DepositRequest");
+    });
+
+    it("denies a single deposit request far above the ticket size", async function () {
+      const maxTicket = DEPOSIT_AMOUNT;
+      const { vault } = await deployMaxTicketVault(maxTicket);
+      const overshoot = parseUnderlying("100000");
+
+      await fundAndApprove(mockAsset, vault, user1, overshoot);
+      await expect(vault.connect(user1).requestDeposit(overshoot)).to.be.revertedWithCustomError(
+        vault,
+        "DepositNotAllowed",
+      );
+    });
+
+    it("denies a second queued deposit when pending plus request exceeds the ticket", async function () {
+      const maxTicket = DEPOSIT_AMOUNT;
+      const queueAmount = parseUnderlying("60");
+      const { vault } = await deployMaxTicketVault(maxTicket);
+
+      await fundAndApprove(mockAsset, vault, user1, queueAmount);
+      await expect(vault.connect(user1).requestDeposit(queueAmount)).to.emit(vault, "DepositRequest");
+
+      await fundAndApprove(mockAsset, vault, user1, queueAmount);
+      await expect(vault.connect(user1).requestDeposit(queueAmount)).to.be.revertedWithCustomError(
+        vault,
+        "DepositNotAllowed",
+      );
+    });
+
+    it("denies a deposit that would exceed the ticket given settled shares", async function () {
+      const maxTicket = DEPOSIT_AMOUNT;
+      const first = parseUnderlying("60");
+      const { vault } = await deployMaxTicketVault(maxTicket);
+
+      await requestAndFulfill(mockAsset, liquidityOrchestrator, vault, user1, first);
+      // fulfillDeposit prices shares against the fulfill arg, not `_totalAssets`; sync state so convertToAssets is meaningful.
+      const loSigner = await impersonateLo(liquidityOrchestrator);
+      await vault.connect(loSigner).updateVaultState([], [], first * 2n);
+
+      const settled = await vault.convertToAssets(await vault.balanceOf(user1.address));
+      expect(settled).to.be.gt(0n);
+      const overshoot = maxTicket - settled + 1n;
+
+      await fundAndApprove(mockAsset, vault, user1, overshoot);
+      await expect(vault.connect(user1).requestDeposit(overshoot)).to.be.revertedWithCustomError(
+        vault,
+        "DepositNotAllowed",
+      );
+    });
+
+    it("allows a top-up that fits remaining room after settled shares", async function () {
+      const maxTicket = DEPOSIT_AMOUNT;
+      const first = parseUnderlying("60");
+      const { vault } = await deployMaxTicketVault(maxTicket);
+
+      await requestAndFulfill(mockAsset, liquidityOrchestrator, vault, user1, first);
+      const loSigner = await impersonateLo(liquidityOrchestrator);
+      await vault.connect(loSigner).updateVaultState([], [], first * 2n);
+
+      const settled = await vault.convertToAssets(await vault.balanceOf(user1.address));
+      expect(settled).to.be.gt(0n);
+      const topUp = maxTicket - settled;
+      expect(topUp).to.be.gt(0n);
+
+      await fundAndApprove(mockAsset, vault, user1, topUp);
+      await expect(vault.connect(user1).requestDeposit(topUp)).to.emit(vault, "DepositRequest");
+    });
+
+    it("applies the ticket to the beneficiary for requestDepositFor", async function () {
+      const maxTicket = DEPOSIT_AMOUNT;
+      const { vault } = await deployMaxTicketVault(maxTicket);
+      const router = user2;
+      const overshoot = parseUnderlying("100000");
+
+      await mockAsset.mint(router.address, maxTicket);
+      await mockAsset.connect(router).approve(await vault.getAddress(), maxTicket);
+      await expect(vault.connect(router).requestDepositFor(user1.address, maxTicket))
+        .to.emit(vault, "DepositRequest")
+        .withArgs(user1.address, maxTicket);
+
+      await mockAsset.mint(router.address, overshoot);
+      await mockAsset.connect(router).approve(await vault.getAddress(), overshoot);
+      await expect(vault.connect(router).requestDepositFor(user1.address, overshoot)).to.be.revertedWithCustomError(
+        vault,
+        "DepositNotAllowed",
+      );
     });
   });
 });
