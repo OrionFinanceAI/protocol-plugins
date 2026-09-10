@@ -58,7 +58,7 @@ PLUGIN=manager-only pnpm deploy:sepolia
 PLUGIN=router pnpm deploy:sepolia
 ```
 
-Required in `.env`: `PRIVATE_KEY`, `SEPOLIA_RPC_URL`. `PLUGIN` is set on the command. Writes `deployments/<network>-<timestamp>.json`.
+Required in `.env`: `PRIVATE_KEY`, plus `SEPOLIA_RPC_URL` and/or `MAINNET_RPC_URL` for the target network (no bare `RPC_URL`). `PLUGIN` is set on the command. Writes `deployments/<network>-<timestamp>.json`.
 
 On non-local networks, if `ETHERSCAN_API_KEY` is set the script verifies the contract after deploy. Set `SKIP_VERIFY=1` to skip. Without an API key it prints a manual `npx hardhat verify` command instead.
 
