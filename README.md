@@ -16,7 +16,7 @@ If you have an idea for a strategist, access policy, or depositor flow, this is 
 
 ## Development
 
-Requires Node.js ≥ 22.13 and [pnpm](https://pnpm.io/).
+Requires Node.js ≥ 24 and [pnpm](https://pnpm.io/).
 
 ```bash
 pnpm install

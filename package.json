@@ -5,7 +5,7 @@
   "license": "BSD-3-Clause",
   "type": "module",
   "engines": {
-    "node": ">=22.13.0"
+    "node": ">=24"
   },
   "author": {
     "name": "Orion Finance",
