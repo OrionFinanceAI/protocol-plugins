@@ -26,7 +26,7 @@ pnpm lint
 pnpm coverage
 ```
 
-`@orion-finance/protocol` is a direct GitHub dependency (`2.7.2`). `precompile` compiles it into `node_modules` before plugin builds and tests. Integration tests deploy the full protocol stack from those artifacts.
+`@orion-finance/protocol` is a direct GitHub dependency (`abis-v2.7.5`). `precompile` compiles it into `node_modules` before plugin builds and tests. Integration tests deploy the full protocol stack from those artifacts.
 
 For protocol architecture and interface docs, see [docs.orionfinance.ai](https://docs.orionfinance.ai/).
 
@@ -55,6 +55,7 @@ One Hardhat script deploys a single plugin. KBest *operation* (cron / `submitInt
 ```bash
 cp .env.example .env
 PLUGIN=whitelist OWNER=0x... pnpm deploy:sepolia
+PLUGIN=whitelist OWNER=0x... pnpm deploy:mainnet
 PLUGIN=manager-only pnpm deploy:sepolia
 PLUGIN=router pnpm deploy:sepolia
 ```
