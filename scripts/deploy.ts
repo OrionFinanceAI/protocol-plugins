@@ -13,6 +13,7 @@
  *
  * Usage:
  *   PLUGIN=whitelist pnpm deploy:sepolia
+ *   PLUGIN=whitelist pnpm deploy:mainnet
  *   PLUGIN=manager-only hardhat run scripts/deploy.ts --network hardhat
  */
 
