@@ -26,7 +26,7 @@ pnpm lint
 pnpm coverage
 ```
 
-`@orion-finance/protocol` is a direct GitHub dependency (`abis-v2.7.5`). `precompile` compiles it into `node_modules` before plugin builds and tests. Integration tests deploy the full protocol stack from those artifacts.
+`@orion-finance/protocol` is a direct GitHub dependency (`abis-v2.7.6`). `precompile` compiles it into `node_modules` before plugin builds and tests. Integration tests deploy the full protocol stack from those artifacts.
 
 For protocol architecture and interface docs, see [docs.orionfinance.ai](https://docs.orionfinance.ai/).
 
