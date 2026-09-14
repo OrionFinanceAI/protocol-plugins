@@ -8,8 +8,8 @@ import { ErrorsLib } from "@orion-finance/protocol/contracts/libraries/ErrorsLib
 import "@openzeppelin/contracts/access/Ownable2Step.sol";
 import "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 import { ReentrancyGuard } from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import { IERC4626 } from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
+import { SafeErc4626 } from "../libraries/SafeErc4626.sol";
 
 /**
  * @title KBestApyStrategist
@@ -141,18 +141,13 @@ contract KBestApyStrategist is IOrionStrategist, ERC165, Ownable2Step, Reentranc
     }
 
     /// @dev Returns convertToAssets(1 share) or 0 on any failure.
+    ///      Uses gas-stipended staticcalls so WETH-like payable fallbacks cannot OOG the scan.
     function _getSharePrice(address asset) private view returns (uint256) {
-        uint8 dec = 0;
-        try IERC4626(asset).decimals() returns (uint8 d) {
-            dec = d;
-        } catch {
-            return 0;
-        }
-        try IERC4626(asset).convertToAssets(10 ** dec) returns (uint256 price) {
-            return price;
-        } catch {
-            return 0;
-        }
+        (bool decOk, uint8 dec) = SafeErc4626.decimals(asset);
+        if (!decOk || dec > 77) return 0;
+        (bool priceOk, uint256 price) = SafeErc4626.convertToAssets(asset, 10 ** dec);
+        if (!priceOk) return 0;
+        return price;
     }
 
     function _getAssetApy(address asset) internal view returns (uint256) {

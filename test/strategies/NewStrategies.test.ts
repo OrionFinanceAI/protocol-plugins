@@ -748,4 +748,51 @@ describe("New Strategies", function () {
       }
     });
   });
+
+  describe("WETH-like gas bomb (KBestApyStrategist)", function () {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let mockExecutionAdapter: any;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let wethLike: any;
+
+    beforeEach(async function () {
+      const MockExecutionAdapterFactory = await getProtocolFactory("MockExecutionAdapter");
+      mockExecutionAdapter = await MockExecutionAdapterFactory.deploy();
+
+      const WethFactory = await ethers.getContractFactory("MockWethLikeToken");
+      wethLike = await WethFactory.deploy();
+      await wethLike.waitForDeployment();
+
+      await orionConfig.addWhitelistedAsset(
+        await wethLike.getAddress(),
+        await mockPriceAdapter.getAddress(),
+        await mockExecutionAdapter.getAddress(),
+      );
+    });
+
+    it("deploys and submitIntent succeeds with WETH-like on whitelist without OOG", async function () {
+      await mintAndDeposit(underlyingAsset, assetA, user, 1000, underlyingDecimals);
+      const F = await ethers.getContractFactory("KBestApyStrategist");
+      // Constructor checkpoints the full whitelist (including WETH-like).
+      const strategy = (await F.deploy(
+        owner.address,
+        await orionConfig.getAddress(),
+        3,
+        WEIGHTING_APY,
+      )) as unknown as KBestApyStrategist;
+      await strategy.waitForDeployment();
+      const vault = await createVault(transparentVaultFactory, owner, await strategy.getAddress());
+
+      const tx = await strategy.submitIntent();
+      const receipt = await tx.wait();
+      expect(receipt).to.not.equal(null);
+      expect(receipt!.gasUsed).to.be.lt(5_000_000n);
+
+      const cp = await checkpointRecordedForAsset(strategy, receipt!, await wethLike.getAddress());
+      expect(cp).to.equal(undefined);
+
+      const [tokens] = await vault.getIntent();
+      expect(tokens).to.not.include(await wethLike.getAddress());
+    });
+  });
 });
