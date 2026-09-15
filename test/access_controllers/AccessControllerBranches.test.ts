@@ -9,6 +9,7 @@ import type {
   NftOwnerAccessControl,
   SignedTicketAccessControl,
   TvlCapDepositAccessControl,
+  MaxTicketSizeDepositAccessControl,
 } from "../../types/ethers-contracts/index.js";
 import type {
   MockBlacklistable,
@@ -617,6 +618,58 @@ describe("Access controller branch coverage", function () {
       const validDepositCalldata = vault.interface.encodeFunctionData("requestDeposit", [cap]);
       const overshootCalldata = vault.interface.encodeFunctionData("requestDeposit", [parseUnderlying("100000")]);
       const validDepositForCalldata = vault.interface.encodeFunctionData("requestDepositFor", [user1.address, cap]);
+      const overshootDepositForCalldata = vault.interface.encodeFunctionData("requestDepositFor", [
+        user1.address,
+        parseUnderlying("100000"),
+      ]);
+      const unknownSelectorCalldata = validDepositForCalldata.replace(/^0x[0-9a-fA-F]{8}/, "0xdeadbeef");
+
+      expect(await gate.connect(vaultSigner).canRequestDeposit(user1.address, "0x")).to.equal(false);
+      expect(
+        await gate.connect(vaultSigner).canRequestDeposit(user1.address, validDepositCalldata.slice(0, 10)),
+      ).to.equal(false);
+      expect(await gate.connect(vaultSigner).canRequestDeposit(user1.address, overshootCalldata)).to.equal(false);
+      expect(await gate.connect(vaultSigner).canRequestDeposit(user1.address, validDepositCalldata)).to.equal(true);
+      expect(await gate.connect(vaultSigner).canRequestDeposit(user1.address, overshootDepositForCalldata)).to.equal(
+        false,
+      );
+      expect(await gate.connect(vaultSigner).canRequestDeposit(user1.address, validDepositForCalldata)).to.equal(true);
+      expect(
+        await gate.connect(vaultSigner).canRequestDeposit(user1.address, validDepositForCalldata.slice(0, 10)),
+      ).to.equal(false);
+      expect(await gate.connect(vaultSigner).canRequestDeposit(user1.address, unknownSelectorCalldata)).to.equal(false);
+    });
+  });
+
+  describe("MaxTicketSizeDepositAccessControl", function () {
+    it("reverts on zero max ticket size and reports supportsInterface", async function () {
+      const MaxTicket = await ethers.getContractFactory("MaxTicketSizeDepositAccessControl");
+      await expect(MaxTicket.deploy(0)).to.be.revertedWithCustomError(MaxTicket, "InvalidMaxTicketSize");
+
+      const gate = (await MaxTicket.deploy(1000n)) as unknown as MaxTicketSizeDepositAccessControl;
+      expect(await gate.supportsInterface("0xffffffff")).to.equal(false);
+    });
+
+    it("evaluates canRequestDeposit from vault calldata against cumulative ticket size", async function () {
+      const maxTicket = parseUnderlying("100");
+      const [deployOwner, strategist] = await ethers.getSigners();
+      const deployed = await deployUpgradeableProtocol(deployOwner);
+      const vault = await createVaultWithGates(deployed.transparentVaultFactory, deployOwner, strategist.address);
+
+      const MaxTicket = await ethers.getContractFactory("MaxTicketSizeDepositAccessControl");
+      const gate = (await MaxTicket.deploy(maxTicket)) as unknown as MaxTicketSizeDepositAccessControl;
+      await vault.connect(deployOwner).setDepositAccessControl(await gate.getAddress());
+
+      const vaultAddress = await vault.getAddress();
+      await networkHelpers.impersonateAccount(vaultAddress);
+      const vaultSigner = await ethers.getSigner(vaultAddress);
+
+      const validDepositCalldata = vault.interface.encodeFunctionData("requestDeposit", [maxTicket]);
+      const overshootCalldata = vault.interface.encodeFunctionData("requestDeposit", [parseUnderlying("100000")]);
+      const validDepositForCalldata = vault.interface.encodeFunctionData("requestDepositFor", [
+        user1.address,
+        maxTicket,
+      ]);
       const overshootDepositForCalldata = vault.interface.encodeFunctionData("requestDepositFor", [
         user1.address,
         parseUnderlying("100000"),

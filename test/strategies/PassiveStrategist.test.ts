@@ -420,3 +420,165 @@ describe("Passive Strategist", function () {
     });
   });
 });
+
+describe("KBestTvlWeightedAverage WETH-like gas bomb", function () {
+  const GAS_BOUND = 5_000_000n;
+
+  let owner: SignerWithAddress;
+  let strategist: SignerWithAddress;
+  let user: SignerWithAddress;
+  let orionConfig: OrionConfig;
+  let transparentVaultFactory: TransparentVaultFactory;
+  let underlyingAsset: MockUnderlyingAsset;
+  let mockVaultHigh: MockERC4626Asset;
+  let mockVaultLow: MockERC4626Asset;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let wethLike: any;
+  let passiveStrategist: KBestTvlWeightedAverage;
+  let transparentVault: OrionTransparentVault;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let mockPriceAdapter: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let mockExecutionAdapter: any;
+
+  before(async function () {
+    await resetNetwork();
+  });
+
+  beforeEach(async function () {
+    this.timeout(90_000);
+    [owner, strategist, , user] = await ethers.getSigners();
+
+    const UnderlyingFactory = await getProtocolFactory("MockUnderlyingAsset");
+    underlyingAsset = (await UnderlyingFactory.deploy(12)) as unknown as MockUnderlyingAsset;
+    await underlyingAsset.waitForDeployment();
+
+    const deployed = await deployUpgradeableProtocol(owner, underlyingAsset, owner);
+    orionConfig = deployed.orionConfig;
+    transparentVaultFactory = deployed.transparentVaultFactory;
+
+    const MockPriceAdapterFactory = await getProtocolFactory("MockPriceAdapter");
+    mockPriceAdapter = await MockPriceAdapterFactory.deploy();
+
+    const MockExecutionAdapterFactory = await getProtocolFactory("MockExecutionAdapter");
+    mockExecutionAdapter = await MockExecutionAdapterFactory.deploy();
+
+    const ERC4626Factory = await getProtocolFactory("MockERC4626Asset");
+    mockVaultHigh = (await ERC4626Factory.deploy(
+      await underlyingAsset.getAddress(),
+      "High TVL",
+      "HTVL",
+    )) as unknown as MockERC4626Asset;
+    mockVaultLow = (await ERC4626Factory.deploy(
+      await underlyingAsset.getAddress(),
+      "Low TVL",
+      "LTVL",
+    )) as unknown as MockERC4626Asset;
+    await Promise.all([mockVaultHigh.waitForDeployment(), mockVaultLow.waitForDeployment()]);
+
+    await underlyingAsset.mint(user.address, ethers.parseUnits("10000", 12));
+    const highDeposit = ethers.parseUnits("3000", 12);
+    const lowDeposit = ethers.parseUnits("1000", 12);
+    await underlyingAsset.connect(user).approve(await mockVaultHigh.getAddress(), highDeposit);
+    await mockVaultHigh.connect(user).deposit(highDeposit, user.address);
+    await underlyingAsset.connect(user).approve(await mockVaultLow.getAddress(), lowDeposit);
+    await mockVaultLow.connect(user).deposit(lowDeposit, user.address);
+
+    const WethFactory = await ethers.getContractFactory("MockWethLikeToken");
+    wethLike = await WethFactory.deploy();
+    await wethLike.waitForDeployment();
+
+    for (const asset of [mockVaultHigh, mockVaultLow]) {
+      await orionConfig.addWhitelistedAsset(
+        await asset.getAddress(),
+        await mockPriceAdapter.getAddress(),
+        await mockExecutionAdapter.getAddress(),
+      );
+    }
+    // Spot / WETH-like: use MockExecutionAdapter so adapter validation does not unbounded-call asset().
+    await orionConfig.addWhitelistedAsset(
+      await wethLike.getAddress(),
+      await mockPriceAdapter.getAddress(),
+      await mockExecutionAdapter.getAddress(),
+    );
+
+    const StratFactory = await ethers.getContractFactory("KBestTvlWeightedAverage");
+    passiveStrategist = (await StratFactory.deploy(
+      strategist.address,
+      await orionConfig.getAddress(),
+      2,
+    )) as unknown as KBestTvlWeightedAverage;
+    await passiveStrategist.waitForDeployment();
+
+    const tx = await transparentVaultFactory
+      .connect(owner)
+      .createVault(
+        await passiveStrategist.getAddress(),
+        "WETH Bomb Vault",
+        "WBV",
+        0,
+        0,
+        0,
+        ethers.ZeroAddress,
+        ethers.ZeroAddress,
+        ethers.ZeroAddress,
+      );
+    const receipt = await tx.wait();
+    const event = receipt?.logs.find((log) => {
+      try {
+        return transparentVaultFactory.interface.parseLog(log)?.name === "OrionVaultCreated";
+      } catch {
+        return false;
+      }
+    });
+    const vaultAddress = transparentVaultFactory.interface.parseLog(event!)!.args[0];
+    transparentVault = (await getProtocolContractAt(
+      "OrionTransparentVault",
+      vaultAddress,
+    )) as unknown as OrionTransparentVault;
+  });
+
+  it("submitIntent succeeds with WETH-like + ERC4626 whitelist without OOG", async function () {
+    const tx = await passiveStrategist.connect(strategist).submitIntent();
+    const receipt = await tx.wait();
+    expect(receipt).to.not.equal(null);
+    expect(receipt!.gasUsed).to.be.lt(GAS_BOUND);
+  });
+
+  it("ranks non-4626 WETH-like last (sentinel TVL); top-K are ERC4626 vaults", async function () {
+    await passiveStrategist.connect(strategist).submitIntent();
+    const [tokens] = await transparentVault.getIntent();
+    expect(tokens.length).to.equal(2);
+    expect(tokens).to.include(await mockVaultHigh.getAddress());
+    expect(tokens).to.include(await mockVaultLow.getAddress());
+    expect(tokens).to.not.include(await wethLike.getAddress());
+  });
+
+  it("pure ERC4626 top-K still selects by TVL and weights sum to intent scale", async function () {
+    await passiveStrategist.connect(strategist).submitIntent();
+    const [tokens, weights] = await transparentVault.getIntent();
+    expect(tokens[0]).to.equal(await mockVaultHigh.getAddress());
+    let total = 0n;
+    for (const w of weights) total += BigInt(w);
+    const scale = 10 ** Number(await orionConfig.strategistIntentDecimals());
+    expect(total).to.equal(BigInt(scale));
+  });
+
+  it("SafeErc4626 stipended probe stays cheap vs unbounded try/catch on WETH-like", async function () {
+    const HarnessFactory = await ethers.getContractFactory("SafeErc4626Harness");
+    const harness = await HarnessFactory.deploy();
+    await harness.waitForDeployment();
+
+    const wethAddr = await wethLike.getAddress();
+    const [safeUsed, safeOk] = await harness.gasUsedSafeTotalAssets.staticCall(wethAddr);
+    expect(safeOk).to.equal(false);
+    expect(safeUsed).to.be.lt(600_000n);
+
+    const [unsafeUsed] = await harness.gasUsedUnsafeTotalAssets.staticCall(wethAddr, {
+      gasLimit: 15_000_000n,
+    });
+    // Unbounded try/catch forwards ~63/64 of remaining gas into the payable fallback.
+    expect(unsafeUsed).to.be.gt(1_000_000n);
+    expect(unsafeUsed).to.be.gt(safeUsed * 5n);
+  });
+});

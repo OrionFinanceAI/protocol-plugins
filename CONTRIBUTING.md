@@ -38,7 +38,7 @@ A useful proposal:
 
 ## Development setup
 
-Local development requires Node.js ≥ 22.13 and [pnpm](https://pnpm.io/).
+Local development requires Node.js ≥ 24 and [pnpm](https://pnpm.io/).
 
 1. Fork the repository on GitHub and clone your fork:
 

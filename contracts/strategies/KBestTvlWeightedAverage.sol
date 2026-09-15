@@ -9,10 +9,10 @@ import { ErrorsLib } from "@orion-finance/protocol/contracts/libraries/ErrorsLib
 import "@openzeppelin/contracts/access/Ownable2Step.sol";
 import "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 import { ReentrancyGuard } from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import { IERC4626 } from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import { IERC20Metadata } from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 import { EnumerableSet } from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
+import { SafeErc4626 } from "../libraries/SafeErc4626.sol";
 
 /**
  * @title KBestTvlWeightedAverage
@@ -156,21 +156,11 @@ contract KBestTvlWeightedAverage is IOrionStrategist, ERC165, Ownable2Step, Reen
     ///      where underlyingPrice is sourced from the protocol price registry and is already
     ///      in priceAdapterDecimals precision, making all results directly comparable.
     function _normalizedTvl(address asset) private view returns (uint256) {
-        uint256 rawTvl = 0;
-        try IERC4626(asset).totalAssets() returns (uint256 tvl) {
-            rawTvl = tvl;
-        } catch {
-            return 1;
-        }
+        (bool assetOk, address vaultUnderlying) = SafeErc4626.asset(asset);
+        if (!assetOk || vaultUnderlying == address(0)) return 1;
 
-        address vaultUnderlying = address(0);
-        try IERC4626(asset).asset() returns (address u) {
-            vaultUnderlying = u;
-        } catch {
-            return 1;
-        }
-
-        if (vaultUnderlying == address(0)) return 1;
+        (bool tvlOk, uint256 rawTvl) = SafeErc4626.totalAssets(asset);
+        if (!tvlOk) return 1;
 
         uint8 underlyingDecimals = 0;
         try IERC20Metadata(vaultUnderlying).decimals() returns (uint8 d) {
