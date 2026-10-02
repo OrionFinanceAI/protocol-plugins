@@ -43,5 +43,9 @@ docker-compose/docker-compose-full.yml
 diagram.mmd
 .mcp.json
 /.pnpm-store/
+/.hardhat-cache/
+/.fake-home/
+/.xdg-cache/
+/vendor/
 /npm/
 /project/

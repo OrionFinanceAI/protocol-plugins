@@ -40,6 +40,7 @@ const VALID_PLUGINS = [
   "ens",
   "eas",
   "all-of",
+  "trex",
   "router",
   "tvl",
   "apy-equal",
@@ -222,6 +223,13 @@ async function main(): Promise<void> {
     case "all-of":
       contractName = "AllOfDepositAccessControl";
       constructorArgs = [parseAddressList("GATES")];
+      break;
+    case "trex":
+      contractName = "TrexAccessControl";
+      constructorArgs = [
+        ethers.getAddress(requireEnv("IDENTITY_REGISTRY")),
+        process.env.MODULAR_COMPLIANCE ? ethers.getAddress(process.env.MODULAR_COMPLIANCE) : ethers.ZeroAddress,
+      ];
       break;
     case "router":
       contractName = "OrionDistributionRouter";

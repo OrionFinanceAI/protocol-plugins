@@ -48,8 +48,8 @@ contract WhitelistAccessControl is
     }
 
     /// @inheritdoc IOrionTransferAccessControl
-    function canTransferShares(address account, bytes calldata) external view override returns (bool) {
-        return whitelist[account];
+    function canTransferShares(address from, address, uint256, bytes calldata) external view override returns (bool) {
+        return whitelist[from];
     }
 
     /// @inheritdoc IERC165

@@ -244,7 +244,7 @@ describe("Access controller branch coverage", function () {
 
       expect(await gate.canRequestDeposit(user1.address, "0x")).to.equal(true);
       expect(await gate.canHoldShares(user1.address)).to.equal(true);
-      expect(await gate.canTransferShares(user1.address, "0x")).to.equal(true);
+      expect(await gate.canTransferShares(user1.address, stranger.address, 0n, "0x")).to.equal(true);
       expect(await gate.canHoldShares(stranger.address)).to.equal(false);
 
       const depositIface = "0x" + ethers.id("canRequestDeposit(address,bytes)").slice(2, 10);
@@ -291,7 +291,7 @@ describe("Access controller branch coverage", function () {
       });
       await unrestricted.connect(user1).registerAttestation(okUid);
       expect(await unrestricted.canHoldShares(user1.address)).to.equal(true);
-      expect(await unrestricted.canTransferShares(user1.address, "0x")).to.equal(true);
+      expect(await unrestricted.canTransferShares(user1.address, ethers.ZeroAddress, 0n, "0x")).to.equal(true);
     });
 
     it("denies views when a registered attestation is corrupted on EAS", async function () {
@@ -423,7 +423,7 @@ describe("Access controller branch coverage", function () {
       );
 
       expect(await gate.canHoldShares(user1.address)).to.equal(false);
-      expect(await gate.canTransferShares(user1.address, "0x")).to.equal(false);
+      expect(await gate.canTransferShares(user1.address, stranger.address, 0n, "0x")).to.equal(false);
       expect(await gate.supportsInterface("0xffffffff")).to.equal(false);
     });
   });
@@ -487,7 +487,7 @@ describe("Access controller branch coverage", function () {
       );
       await gate.submitSignedTicket(valid);
       expect(await gate.canHoldShares(user1.address)).to.equal(true);
-      expect(await gate.canTransferShares(user1.address, "0x")).to.equal(true);
+      expect(await gate.canTransferShares(user1.address, stranger.address, 0n, "0x")).to.equal(true);
       expect(await gate.canHoldShares(stranger.address)).to.equal(false);
       expect(await gate.supportsInterface("0xffffffff")).to.equal(false);
     });
@@ -557,7 +557,7 @@ describe("Access controller branch coverage", function () {
       const gate = (await BlacklistGate.deploy(await denylist.getAddress())) as unknown as BlacklistRejectAccessControl;
 
       expect(await gate.canHoldShares(ethers.ZeroAddress)).to.equal(false);
-      expect(await gate.canTransferShares(user1.address, "0x")).to.equal(true);
+      expect(await gate.canTransferShares(user1.address, stranger.address, 0n, "0x")).to.equal(true);
 
       await denylist.setShouldRevert(true);
       expect(await gate.canRequestDeposit(user1.address, "0x")).to.equal(false);
@@ -575,7 +575,7 @@ describe("Access controller branch coverage", function () {
       const gate = (await NftGate.deploy(await nft.getAddress())) as unknown as NftOwnerAccessControl;
 
       expect(await gate.canHoldShares(ethers.ZeroAddress)).to.equal(false);
-      expect(await gate.canTransferShares(user1.address, "0x")).to.equal(false);
+      expect(await gate.canTransferShares(user1.address, ethers.ZeroAddress, 0n, "0x")).to.equal(false);
       expect(await gate.supportsInterface("0xffffffff")).to.equal(false);
     });
   });
