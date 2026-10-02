@@ -30,6 +30,11 @@ export default defineConfig([
     "**/typechain-types",
     "**/.venv",
     "**/.venv-py",
+    "**/.fake-home",
+    "**/.hardhat-cache",
+    "**/.pnpm-store",
+    "**/.xdg-cache",
+    "**/vendor",
     // files
     "**/*.env",
     "**/*.log",

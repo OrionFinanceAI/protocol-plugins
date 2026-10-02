@@ -12,7 +12,7 @@ import "@openzeppelin/contracts/utils/introspection/ERC165.sol";
  */
 contract NonTransferableSharesAccessControl is IOrionTransferAccessControl, ERC165 {
     /// @inheritdoc IOrionTransferAccessControl
-    function canTransferShares(address, bytes calldata) external pure override returns (bool) {
+    function canTransferShares(address, address, uint256, bytes calldata) external pure override returns (bool) {
         return false;
     }
 

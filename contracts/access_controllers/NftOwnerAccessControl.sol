@@ -50,8 +50,8 @@ contract NftOwnerAccessControl is
     }
 
     /// @inheritdoc IOrionTransferAccessControl
-    function canTransferShares(address account, bytes calldata) external view override returns (bool) {
-        return _ok(account);
+    function canTransferShares(address from, address, uint256, bytes calldata) external view override returns (bool) {
+        return _ok(from);
     }
 
     /// @inheritdoc IERC165

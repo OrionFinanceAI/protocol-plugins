@@ -105,6 +105,8 @@ export async function deployUpgradeableProtocol(
 
   await orionConfig.setVaultFactory(await transparentVaultFactory.getAddress());
 
+  await orionConfig.setMaxOrionVaults(100n);
+
   return {
     orionConfig,
     priceAdapterRegistry,

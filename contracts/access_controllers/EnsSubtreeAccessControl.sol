@@ -110,8 +110,8 @@ contract EnsSubtreeAccessControl is
     }
 
     /// @inheritdoc IOrionTransferAccessControl
-    function canTransferShares(address sender, bytes calldata) external view override returns (bool) {
-        return _ok(sender);
+    function canTransferShares(address from, address, uint256, bytes calldata) external view override returns (bool) {
+        return _ok(from);
     }
 
     /// @inheritdoc IERC165
