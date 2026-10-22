@@ -36,7 +36,7 @@ blockExoticSubdeps: false
 minimumReleaseAgeExclude:
   - '@openzeppelin/contracts@4.8.3 || 4.9.1 || 4.9.2 || 4.9.3 || 4.9.6'
   - tmp@0.2.4 || 0.2.6
-  - elliptic@6.6.2
+  - elliptic@6.6.1
   - undici@6.28.1
   - braces@3.0.4
   - sprintf-js@1.1.4
