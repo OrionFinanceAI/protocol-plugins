@@ -2,8 +2,11 @@ overrides:
   "@nomicfoundation/hardhat-verify": "3.0.22"
   "@openzeppelin/contracts-upgradeable@>=4.3.0 <4.8.3": "^4.9.6"
   "@openzeppelin/contracts@>=4.3.0 <4.8.3": "^4.9.6"
+  "@openzeppelin/contracts@3.4.2-solc-0.7": "4.9.6"
+  "@openzeppelin/contracts@4.7.3": "4.9.6"
   lodash: "^4.17.21"
-  ws: ">=8.20.1"
+  ws: ">=8.21.0"
+  "tmp@<0.2.6": ">=0.2.6"
 
 peerDependencyRules:
   ignoreMissing:
